@@ -1146,16 +1146,9 @@ func RunKubelet(kubeServer *options.KubeletServer, kubeDeps *kubelet.Dependencie
 		klog.ErrorS(err, "Failed to set rlimit on max file handles")
 	}
 
-	// process pods and exit.
-	if runOnce {
-		if _, err := k.RunOnce(podCfg.Updates()); err != nil {
-			return fmt.Errorf("runonce failed: %w", err)
-		}
-		klog.InfoS("Started kubelet as runonce")
-	} else {
-		startKubelet(k, podCfg, &kubeServer.KubeletConfiguration, kubeDeps, kubeServer.EnableServer)
-		klog.InfoS("Started kubelet")
-	}
+
+	startKubelet(k, podCfg, &kubeServer.KubeletConfiguration, kubeDeps, kubeServer.EnableServer)
+	klog.InfoS("Started kubelet")
 	return nil
 }
 
