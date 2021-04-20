@@ -21,14 +21,9 @@ package app
 
 import (
 	"k8s.io/component-base/featuregate"
-	"k8s.io/csi-translation-lib/plugins"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/volume"
-	"k8s.io/kubernetes/pkg/volume/azure_file"
 	"k8s.io/kubernetes/pkg/volume/csimigration"
-	"k8s.io/kubernetes/pkg/volume/portworx"
-	"k8s.io/kubernetes/pkg/volume/rbd"
 )
 
 type probeFn func() []volume.VolumePlugin
@@ -60,8 +55,7 @@ type pluginInfo struct {
 
 func appendAttachableLegacyProviderVolumes(logger klog.Logger, allPlugins []volume.VolumePlugin, featureGate featuregate.FeatureGate) ([]volume.VolumePlugin, error) {
 	pluginMigrationStatus := make(map[string]pluginInfo)
-	pluginMigrationStatus[plugins.PortworxVolumePluginName] = pluginInfo{pluginMigrationFeature: features.CSIMigrationPortworx, pluginUnregisterFeature: features.InTreePluginPortworxUnregister, pluginProbeFunction: portworx.ProbeVolumePlugins}
-	pluginMigrationStatus[plugins.RBDVolumePluginName] = pluginInfo{pluginMigrationFeature: features.CSIMigrationRBD, pluginUnregisterFeature: features.InTreePluginRBDUnregister, pluginProbeFunction: rbd.ProbeVolumePlugins}
+
 	var err error
 	for pluginName, pluginInfo := range pluginMigrationStatus {
 		allPlugins, err = appendPluginBasedOnFeatureFlags(logger, allPlugins, pluginName, featureGate, pluginInfo)
@@ -80,18 +74,6 @@ func appendLegacyProviderVolumes(logger klog.Logger, allPlugins []volume.VolumeP
 	var err error
 	// First append attachable volumes
 	allPlugins, err = appendAttachableLegacyProviderVolumes(logger, allPlugins, featureGate)
-	if err != nil {
-		return allPlugins, err
-	}
-
-	// Then append non-attachable volumes
-	pluginName := plugins.AzureFileInTreePluginName
-	pluginInfo := pluginInfo{
-		pluginMigrationFeature:  features.CSIMigrationAzureFile,
-		pluginUnregisterFeature: features.InTreePluginAzureFileUnregister,
-		pluginProbeFunction:     azure_file.ProbeVolumePlugins,
-	}
-	allPlugins, err = appendPluginBasedOnFeatureFlags(logger, allPlugins, pluginName, featureGate, pluginInfo)
 	if err != nil {
 		return allPlugins, err
 	}
