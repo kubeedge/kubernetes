@@ -1205,7 +1205,6 @@ func RunKubelet(kubeServer *options.KubeletServer, kubeDeps *kubelet.Dependencie
 		klog.ErrorS(err, "Failed to set rlimit on max file handles")
 	}
 
-
 	startKubelet(k, podCfg, &kubeServer.KubeletConfiguration, kubeDeps, kubeServer.EnableServer)
 	klog.InfoS("Started kubelet")
 	return nil
@@ -1222,7 +1221,6 @@ func startKubelet(k kubelet.Bootstrap, podCfg *config.PodConfig, kubeCfg *kubele
 	if kubeCfg.ReadOnlyPort > 0 {
 		go k.ListenAndServeReadOnly(netutils.ParseIPSloppy(kubeCfg.Address), uint(kubeCfg.ReadOnlyPort))
 	}
-	go k.ListenAndServePodResources()
 }
 
 func createAndInitKubelet(kubeServer *options.KubeletServer,
