@@ -209,7 +209,6 @@ type Bootstrap interface {
 	StartGarbageCollection()
 	ListenAndServe(kubeCfg *kubeletconfiginternal.KubeletConfiguration, tlsOptions *server.TLSOptions, auth server.AuthInterface)
 	ListenAndServeReadOnly(address net.IP, port uint)
-	ListenAndServePodResources()
 	Run(<-chan kubetypes.PodUpdate)
 }
 
@@ -2389,16 +2388,6 @@ func (kl *Kubelet) ListenAndServe(kubeCfg *kubeletconfiginternal.KubeletConfigur
 // ListenAndServeReadOnly runs the kubelet HTTP server in read-only mode.
 func (kl *Kubelet) ListenAndServeReadOnly(address net.IP, port uint) {
 	server.ListenAndServeKubeletReadOnlyServer(kl, kl.resourceAnalyzer, address, port)
-}
-
-// ListenAndServePodResources runs the kubelet podresources grpc service
-func (kl *Kubelet) ListenAndServePodResources() {
-	socket, err := util.LocalEndpoint(kl.getPodResourcesDir(), podresources.Socket)
-	if err != nil {
-		klog.V(2).InfoS("Failed to get local endpoint for PodResources endpoint", "err", err)
-		return
-	}
-	server.ListenAndServePodResources(socket, kl.podManager, kl.containerManager, kl.containerManager, kl.containerManager)
 }
 
 // Delete the eligible dead container instances in a pod. Depending on the configuration, the latest dead containers may be kept around.
