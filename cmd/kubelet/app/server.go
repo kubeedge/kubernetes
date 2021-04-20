@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"math"
 	"net"
-	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -48,7 +47,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericapiserver "k8s.io/apiserver/pkg/server"
-	"k8s.io/apiserver/pkg/server/healthz"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -759,17 +757,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 
 	if err := RunKubelet(s, kubeDeps, s.RunOnce); err != nil {
 		return err
-	}
-
-	if s.HealthzPort > 0 {
-		mux := http.NewServeMux()
-		healthz.InstallHandler(mux)
-		go wait.Until(func() {
-			err := http.ListenAndServe(net.JoinHostPort(s.HealthzBindAddress, strconv.Itoa(int(s.HealthzPort))), mux)
-			if err != nil {
-				klog.ErrorS(err, "Failed to start healthz server")
-			}
-		}, 5*time.Second, wait.NeverStop)
 	}
 
 	if s.RunOnce {
