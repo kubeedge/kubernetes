@@ -1145,9 +1145,6 @@ func startKubelet(k kubelet.Bootstrap, podCfg *config.PodConfig, kubeCfg *kubele
 	if kubeCfg.ReadOnlyPort > 0 {
 		go k.ListenAndServeReadOnly(netutils.ParseIPSloppy(kubeCfg.Address), uint(kubeCfg.ReadOnlyPort))
 	}
-	if utilfeature.DefaultFeatureGate.Enabled(features.KubeletPodResources) {
-		go k.ListenAndServePodResources()
-	}
 }
 
 func createAndInitKubelet(kubeServer *options.KubeletServer,
