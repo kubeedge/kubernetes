@@ -63,7 +63,6 @@ import (
 	statsapi "k8s.io/kubelet/pkg/apis/stats/v1alpha1"
 	"k8s.io/kubernetes/pkg/features"
 	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
-	"k8s.io/kubernetes/pkg/kubelet/apis/podresources"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	kubeletcertificate "k8s.io/kubernetes/pkg/kubelet/certificate"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
@@ -453,16 +452,9 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 
 	var serviceLister corelisters.ServiceLister
 	var serviceHasSynced cache.InformerSynced
-	if kubeDeps.KubeClient != nil {
-		kubeInformers := informers.NewSharedInformerFactory(kubeDeps.KubeClient, 0)
-		serviceLister = kubeInformers.Core().V1().Services().Lister()
-		serviceHasSynced = kubeInformers.Core().V1().Services().Informer().HasSynced
-		kubeInformers.Start(wait.NeverStop)
-	} else {
-		serviceIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
-		serviceLister = corelisters.NewServiceLister(serviceIndexer)
-		serviceHasSynced = func() bool { return true }
-	}
+	serviceIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	serviceLister = corelisters.NewServiceLister(serviceIndexer)
+	serviceHasSynced = func() bool { return true }
 
 	// construct a node reference used for events
 	nodeRef := &v1.ObjectReference{
