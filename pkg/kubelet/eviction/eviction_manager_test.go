@@ -1253,11 +1253,6 @@ func TestStaticCriticalPodsAreNotEvicted(t *testing.T) {
 	activePodsFunc := func() []*v1.Pod {
 		return pods
 	}
-	mirrorPodFunc := func(staticPod *v1.Pod) (*v1.Pod, bool) {
-		mirrorPod := staticPod.DeepCopy()
-		mirrorPod.Annotations[kubelettypes.ConfigSourceAnnotationKey] = kubelettypes.ApiserverSource
-		return mirrorPod, true
-	}
 
 	fakeClock := clock.NewFakeClock(time.Now())
 	podKiller := &mockPodKiller{}
@@ -1292,7 +1287,6 @@ func TestStaticCriticalPodsAreNotEvicted(t *testing.T) {
 	manager := &managerImpl{
 		clock:                        fakeClock,
 		killPodFunc:                  podKiller.killPodNow,
-		mirrorPodFunc:                mirrorPodFunc,
 		imageGC:                      diskGC,
 		containerGC:                  diskGC,
 		config:                       config,
