@@ -116,17 +116,6 @@ func TestGetSetPods(t *testing.T) {
 }
 
 func TestDeletePods(t *testing.T) {
-	mirrorPod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID("mirror-pod-uid"),
-			Name:      "mirror-static-pod-name",
-			Namespace: metav1.NamespaceDefault,
-			Annotations: map[string]string{
-				kubetypes.ConfigSourceAnnotationKey: "api",
-				kubetypes.ConfigMirrorAnnotationKey: "mirror",
-			},
-		},
-	}
 	staticPod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:         types.UID("static-pod-uid"),
@@ -147,25 +136,13 @@ func TestDeletePods(t *testing.T) {
 		},
 		staticPod,
 	}
-	updates := append(expectedPods, mirrorPod)
 	podManager, _ := newTestManager()
-	podManager.SetPods(updates)
+	podManager.SetPods(expectedPods)
 
 	podManager.DeletePod(staticPod)
 
 	actualPods := podManager.GetPods()
 	if len(actualPods) == len(expectedPods) {
 		t.Fatalf("Run DeletePod() error, expected %d pods, got %d pods; ", len(expectedPods)-1, len(actualPods))
-	}
-
-	orphanedMirrorPodNames := podManager.GetOrphanedMirrorPodNames()
-	expectedOrphanedMirrorPodNameNum := 1
-	if len(orphanedMirrorPodNames) != expectedOrphanedMirrorPodNameNum {
-		t.Fatalf("Run getOrphanedMirrorPodNames() error, expected %d orphaned mirror pods, got %d orphaned mirror pods; ", expectedOrphanedMirrorPodNameNum, len(orphanedMirrorPodNames))
-	}
-
-	expectedOrphanedMirrorPodName := mirrorPod.Name + "_" + mirrorPod.Namespace
-	if orphanedMirrorPodNames[0] != expectedOrphanedMirrorPodName {
-		t.Fatalf("Run getOrphanedMirrorPodNames() error, expected orphaned mirror pod name : %s, got orphaned mirror pod name %s; ", expectedOrphanedMirrorPodName, orphanedMirrorPodNames[0])
 	}
 }
