@@ -78,7 +78,7 @@ func (f *fakePodWorkers) UpdatePod(options UpdatePodOptions) {
 	case kubetypes.SyncPodKill:
 		f.triggeredDeletion = append(f.triggeredDeletion, uid)
 	default:
-		isTerminal, err := f.syncPodFn(context.Background(), options.UpdateType, options.Pod, options.MirrorPod, status)
+		isTerminal, err := f.syncPodFn(context.Background(), options.UpdateType, options.Pod, status)
 		if err != nil {
 			f.t.Errorf("Unexpected error: %v", err)
 		}
@@ -252,7 +252,7 @@ func createPodWorkers() (*podWorkers, map[types.UID][]syncPodRecord) {
 	fakeCache := containertest.NewFakeCache(fakeRuntime)
 	fakeQueue := &fakeQueue{}
 	w := newPodWorkers(
-		func(ctx context.Context, updateType kubetypes.SyncPodType, pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
+		func(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
 			func() {
 				lock.Lock()
 				defer lock.Unlock()
@@ -539,8 +539,8 @@ type terminalPhaseSync struct {
 	terminal sets.String
 }
 
-func (s *terminalPhaseSync) SyncPod(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
-	isTerminal, err := s.fn(ctx, updateType, pod, mirrorPod, podStatus)
+func (s *terminalPhaseSync) SyncPod(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
+	isTerminal, err := s.fn(ctx, updateType, pod, podStatus)
 	if err != nil {
 		return false, err
 	}
@@ -1281,13 +1281,13 @@ type simpleFakeKubelet struct {
 	wg        sync.WaitGroup
 }
 
-func (kl *simpleFakeKubelet) syncPod(ctx context.Context, updateType kubetypes.SyncPodType, pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
-	kl.pod, kl.mirrorPod, kl.podStatus = pod, mirrorPod, podStatus
+func (kl *simpleFakeKubelet) syncPod(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
+	kl.pod, kl.podStatus = pod, podStatus
 	return false, nil
 }
 
-func (kl *simpleFakeKubelet) syncPodWithWaitGroup(ctx context.Context, updateType kubetypes.SyncPodType, pod, mirrorPod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
-	kl.pod, kl.mirrorPod, kl.podStatus = pod, mirrorPod, podStatus
+func (kl *simpleFakeKubelet) syncPodWithWaitGroup(ctx context.Context, updateType kubetypes.SyncPodType, pod *v1.Pod, podStatus *kubecontainer.PodStatus) (bool, error) {
+	kl.pod, kl.podStatus = pod, podStatus
 	kl.wg.Done()
 	return false, nil
 }
@@ -1343,12 +1343,10 @@ func TestFakePodWorkers(t *testing.T) {
 		kubeletForRealWorkers.wg.Add(1)
 		realPodWorkers.UpdatePod(UpdatePodOptions{
 			Pod:        tt.pod,
-			MirrorPod:  tt.mirrorPod,
 			UpdateType: kubetypes.SyncPodUpdate,
 		})
 		fakePodWorkers.UpdatePod(UpdatePodOptions{
 			Pod:        tt.pod,
-			MirrorPod:  tt.mirrorPod,
 			UpdateType: kubetypes.SyncPodUpdate,
 		})
 
