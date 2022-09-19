@@ -72,7 +72,6 @@ import (
 	"k8s.io/client-go/util/certificate"
 	"k8s.io/client-go/util/connrotation"
 	"k8s.io/client-go/util/keyutil"
-	cloudprovider "k8s.io/cloud-provider"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/configz"
 	"k8s.io/component-base/featuregate"
@@ -466,7 +465,6 @@ func UnsecuredDependencies(s *options.KubeletServer, featureGate featuregate.Fea
 	return &kubelet.Dependencies{
 		Auth:                nil, // default does not enforce auth[nz]
 		CAdvisorInterface:   nil, // cadvisor.New launches background processes (bg http.ListenAndServe, and some bg cleaners), not set here
-		Cloud:               nil, // cloud provider might start background processes
 		ContainerManager:    nil,
 		KubeClient:          nil,
 		HeartbeatClient:     nil,
@@ -622,25 +620,11 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		}
 	}
 
-	if kubeDeps.Cloud == nil {
-		if !cloudprovider.IsExternal(s.CloudProvider) {
-			cloudprovider.DeprecationWarningForProvider(s.CloudProvider)
-			cloud, err := cloudprovider.InitCloudProvider(s.CloudProvider, s.CloudConfigFile)
-			if err != nil {
-				return err
-			}
-			if cloud != nil {
-				klog.V(2).InfoS("Successfully initialized cloud provider", "cloudProvider", s.CloudProvider, "cloudConfigFile", s.CloudConfigFile)
-			}
-			kubeDeps.Cloud = cloud
-		}
-	}
-
 	hostName, err := nodeutil.GetHostname(s.HostnameOverride)
 	if err != nil {
 		return err
 	}
-	nodeName, err := getNodeName(kubeDeps.Cloud, hostName)
+	nodeName, err := getNodeName(hostName)
 	if err != nil {
 		return err
 	}
@@ -1084,24 +1068,8 @@ func kubeClientConfigOverrides(s *options.KubeletServer, clientConfig *restclien
 
 // getNodeName returns the node name according to the cloud provider
 // if cloud provider is specified. Otherwise, returns the hostname of the node.
-func getNodeName(cloud cloudprovider.Interface, hostname string) (types.NodeName, error) {
-	if cloud == nil {
-		return types.NodeName(hostname), nil
-	}
-
-	instances, ok := cloud.Instances()
-	if !ok {
-		return "", fmt.Errorf("failed to get instances from cloud provider")
-	}
-
-	nodeName, err := instances.CurrentNodeName(context.TODO(), hostname)
-	if err != nil {
-		return "", fmt.Errorf("error fetching current node name from cloud provider: %w", err)
-	}
-
-	klog.V(2).InfoS("Cloud provider determined current node", "nodeName", klog.KRef("", string(nodeName)))
-
-	return nodeName, nil
+func getNodeName(hostname string) (types.NodeName, error) {
+	return types.NodeName(hostname), nil
 }
 
 // InitializeTLS checks for a configured TLSCertFile and TLSPrivateKeyFile: if unspecified a new self-signed
@@ -1215,7 +1183,7 @@ func RunKubelet(ctx context.Context, kubeServer *options.KubeletServer, kubeDeps
 		return err
 	}
 	// Query the cloud provider for our node name, default to hostname if kubeDeps.Cloud == nil
-	nodeName, err := getNodeName(kubeDeps.Cloud, hostname)
+	nodeName, err := getNodeName(hostname)
 	if err != nil {
 		return err
 	}
@@ -1306,8 +1274,6 @@ func createAndInitKubelet(kubeServer *options.KubeletServer,
 		hostnameOverridden,
 		nodeName,
 		nodeIPs,
-		kubeServer.ProviderID,
-		kubeServer.CloudProvider,
 		kubeServer.CertDirectory,
 		kubeServer.RootDirectory,
 		kubeServer.PodLogsDir,
