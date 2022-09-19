@@ -35,7 +35,6 @@ import (
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	cloudproviderapi "k8s.io/cloud-provider/api"
 	nodeutil "k8s.io/component-helpers/node/util"
 	"k8s.io/klog/v2"
 	kubeletapis "k8s.io/kubelet/pkg/apis"
@@ -334,15 +333,6 @@ func (kl *Kubelet) initialNode(ctx context.Context) (*v1.Node, error) {
 		nodeTaints = append(nodeTaints, unschedulableTaint)
 	}
 
-	if kl.externalCloudProvider {
-		taint := v1.Taint{
-			Key:    cloudproviderapi.TaintExternalCloudProvider,
-			Value:  "true",
-			Effect: v1.TaintEffectNoSchedule,
-		}
-
-		nodeTaints = append(nodeTaints, taint)
-	}
 	if len(nodeTaints) > 0 {
 		node.Spec.Taints = nodeTaints
 	}
@@ -364,10 +354,6 @@ func (kl *Kubelet) initialNode(ctx context.Context) (*v1.Node, error) {
 			klog.InfoS("the node label will overwrite default setting", "labelKey", k, "labelValue", v, "default", cv)
 		}
 		node.ObjectMeta.Labels[k] = v
-	}
-
-	if kl.providerID != "" {
-		node.Spec.ProviderID = kl.providerID
 	}
 
 	kl.setNodeStatus(ctx, node)
@@ -684,7 +670,7 @@ func (kl *Kubelet) setNodeStatus(ctx context.Context, node *v1.Node) {
 func (kl *Kubelet) defaultNodeStatusFuncs() []func(context.Context, *v1.Node) error {
 	var setters []func(ctx context.Context, n *v1.Node) error
 	setters = append(setters,
-		nodestatus.NodeAddress(kl.nodeIPs, kl.nodeIPValidator, kl.hostname, kl.externalCloudProvider, utilnet.ResolveBindAddress),
+		nodestatus.NodeAddress(kl.nodeIPs, kl.nodeIPValidator, kl.hostname, utilnet.ResolveBindAddress),
 		nodestatus.MachineInfo(string(kl.nodeName), kl.maxPods, kl.podsPerCore, kl.GetCachedMachineInfo, kl.containerManager.GetCapacity,
 			kl.containerManager.GetDevicePluginResourceCapacity, kl.containerManager.GetNodeAllocatableReservation, kl.recordEvent, kl.supportLocalStorageCapacityIsolation()),
 		nodestatus.VersionInfo(kl.cadvisor.VersionInfo, kl.containerRuntime.Type, kl.containerRuntime.Version),
