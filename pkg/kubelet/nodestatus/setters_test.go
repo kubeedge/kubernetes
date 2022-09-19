@@ -278,6 +278,9 @@ func TestNodeAddress(t *testing.T) {
 		},
 	}
 	for _, testCase := range cases {
+		if testCase.cloudProvider || testCase.existingAnnotations != nil || testCase.expectedAnnotations != nil {
+			continue
+		}
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := context.Background()
 			// testCase setup
@@ -324,7 +327,6 @@ func TestNodeAddress(t *testing.T) {
 			setter := NodeAddress(nodeIPs,
 				nodeIPValidator,
 				hostname,
-				testCase.cloudProvider,
 				resolveAddressFunc,
 			)
 
@@ -411,7 +413,6 @@ func TestNodeAddress_NoCloudProvider(t *testing.T) {
 			setter := NodeAddress(testCase.nodeIPs,
 				nodeIPValidator,
 				testKubeletHostname,
-				false, // externalCloudProvider
 				resolvedAddressesFunc)
 
 			// call setter on existing node

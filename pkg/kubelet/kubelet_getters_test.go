@@ -289,7 +289,6 @@ func Test_getLastObservedNodeAddresses(t *testing.T) {
 			defer testKubelet.Cleanup()
 			kl := testKubelet.kubelet
 			kl.nodeName = types.NodeName(tc.nodeName)
-			kl.externalCloudProvider = tc.externalCloudProvider
 			nodeLister := testNodeLister{}
 			if tc.node != nil {
 				nodeLister.nodes = append(nodeLister.nodes, tc.node)

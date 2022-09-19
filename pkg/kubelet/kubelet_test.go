@@ -3219,8 +3219,6 @@ func TestNewMainKubeletStandAlone(t *testing.T) {
 		"hostname",
 		"hostname",
 		[]net.IP{},
-		"",
-		"external",
 		"/tmp/cert",
 		"/tmp/rootdir",
 		tempDir,
