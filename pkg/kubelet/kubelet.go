@@ -68,7 +68,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/certificate"
 	"k8s.io/client-go/util/flowcontrol"
-	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/component-base/zpages/flagz"
 	"k8s.io/component-helpers/apimachinery/lease"
 	resourcehelper "k8s.io/component-helpers/resource"
@@ -419,8 +418,6 @@ func NewMainKubelet(ctx context.Context,
 	hostname string,
 	nodeName types.NodeName,
 	nodeIPs []net.IP,
-	providerID string,
-	cloudProvider string,
 	certDirectory string,
 	rootDirectory string,
 	podLogsDirectory string,
@@ -449,11 +446,6 @@ func NewMainKubelet(ctx context.Context,
 	}
 	if kubeCfg.SyncFrequency.Duration <= 0 {
 		return nil, fmt.Errorf("invalid sync frequency %d", kubeCfg.SyncFrequency.Duration)
-	}
-
-	if !cloudprovider.IsExternal(cloudProvider) && len(cloudProvider) != 0 {
-		cloudprovider.DisableWarningForProvider(cloudProvider)
-		return nil, cloudprovider.ErrorForDisabledProvider(cloudProvider)
 	}
 
 	var nodeHasSynced cache.InformerSynced
@@ -613,8 +605,6 @@ func NewMainKubelet(ctx context.Context,
 		nodeHasSynced:                nodeHasSynced,
 		recorder:                     kubeDeps.Recorder,
 		cadvisor:                     kubeDeps.CAdvisorInterface,
-		externalCloudProvider:        cloudprovider.IsExternal(cloudProvider),
-		providerID:                   providerID,
 		nodeRef:                      nodeRef,
 		nodeLabels:                   nodeLabels,
 		nodeStatusUpdateFrequency:    kubeCfg.NodeStatusUpdateFrequency.Duration,
@@ -1281,8 +1271,6 @@ type Kubelet struct {
 	// Handles certificate rotations.
 	serverCertificateManager certificate.Manager
 
-	// Indicates that the node initialization happens in an external cloud controller
-	externalCloudProvider bool
 	// Reference to this node.
 	nodeRef *v1.ObjectReference
 
@@ -1409,9 +1397,6 @@ type Kubelet struct {
 
 	// use this function to validate the kubelet nodeIP
 	nodeIPValidator func(net.IP) error
-
-	// If non-nil, this is a unique identifier for the node in an external database, eg. cloudprovider
-	providerID string
 
 	// clock is an interface that provides time related functionality in a way that makes it
 	// easy to test the code.

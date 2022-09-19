@@ -25,11 +25,9 @@ import (
 
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/volume/csi"
-	"k8s.io/kubernetes/pkg/volume/iscsi"
 
 	// Volume plugins
 	"k8s.io/kubernetes/pkg/volume"
-	"k8s.io/kubernetes/pkg/volume/fc"
 	"k8s.io/kubernetes/pkg/volume/flexvolume"
 	"k8s.io/kubernetes/pkg/volume/hostpath"
 	"k8s.io/kubernetes/pkg/volume/nfs"
@@ -47,6 +45,7 @@ func ProbeAttachableVolumePlugins(logger klog.Logger, config persistentvolumecon
 		_, ok := plugin.(volume.AttachableVolumePlugin)
 		return ok
 	})
+
 }
 
 // GetDynamicPluginProber gets the probers of dynamically discoverable plugins
@@ -120,8 +119,6 @@ func probeControllerVolumePlugins(logger klog.Logger, config persistentvolumecon
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	allPlugins = append(allPlugins, nfs.ProbeVolumePlugins(nfsConfig)...)
-	allPlugins = append(allPlugins, fc.ProbeVolumePlugins()...)
-	allPlugins = append(allPlugins, iscsi.ProbeVolumePlugins()...)
 	allPlugins = append(allPlugins, csi.ProbeVolumePlugins()...)
 
 	var err error

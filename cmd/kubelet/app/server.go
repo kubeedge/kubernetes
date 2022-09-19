@@ -1296,8 +1296,6 @@ func createAndInitKubelet(
 		hostname,
 		nodeName,
 		nodeIPs,
-		kubeServer.ProviderID,
-		kubeServer.CloudProvider,
 		kubeServer.CertDirectory,
 		kubeServer.RootDirectory,
 		kubeServer.PodLogsDir,
