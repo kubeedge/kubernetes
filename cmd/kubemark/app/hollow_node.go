@@ -30,7 +30,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
@@ -46,7 +45,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/cluster/ports"
 	cadvisortest "k8s.io/kubernetes/pkg/kubelet/cadvisor/testing"
-	"k8s.io/kubernetes/pkg/kubelet/certificate/bootstrap"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	"k8s.io/kubernetes/pkg/kubemark"
 	kubemarkproxy "k8s.io/kubernetes/pkg/proxy/kubemark"
@@ -54,22 +52,20 @@ import (
 )
 
 type hollowNodeConfig struct {
-	KubeconfigPath          string
-	BootstrapKubeconfigPath string
-	CertDirectory           string
-	KubeletPort             int
-	KubeletReadOnlyPort     int
-	Morph                   string
-	NodeName                string
-	ServerPort              int
-	ContentType             string
-	QPS                     float32
-	Burst                   int
-	NodeLabels              map[string]string
-	RegisterWithTaints      []v1.Taint
-	MaxPods                 int
-	ExtendedResources       map[string]string
-	UseHostImageService     bool
+	KubeconfigPath      string
+	KubeletPort         int
+	KubeletReadOnlyPort int
+	Morph               string
+	NodeName            string
+	ServerPort          int
+	ContentType         string
+	QPS                 float32
+	Burst               int
+	NodeLabels          map[string]string
+	RegisterWithTaints  []v1.Taint
+	MaxPods             int
+	ExtendedResources   map[string]string
+	UseHostImageService bool
 
 	// Deprecated config; remove these with the corresponding flags
 	UseRealProxier       bool
@@ -88,8 +84,6 @@ var knownMorphs = sets.NewString("kubelet", "proxy")
 
 func (c *hollowNodeConfig) addFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.KubeconfigPath, "kubeconfig", "/kubeconfig/kubeconfig", "Path to kubeconfig file.")
-	fs.StringVar(&c.BootstrapKubeconfigPath, "bootstrap-kubeconfig", "", "Path to bootstrap kubeconfig file.")
-	fs.StringVar(&c.CertDirectory, "cert-dir", "/etc/srv/", "Path to cert directory for bootstraping.")
 	fs.IntVar(&c.KubeletPort, "kubelet-port", ports.KubeletPort, "Port on which HollowKubelet should be listening.")
 	fs.IntVar(&c.KubeletReadOnlyPort, "kubelet-read-only-port", ports.KubeletReadOnlyPort, "Read-only port on which Kubelet is listening.")
 	fs.StringVar(&c.NodeName, "name", "fake-node", "Name of this Hollow Node.")
@@ -128,13 +122,6 @@ func (c *hollowNodeConfig) createClientConfigFromFile() (*restclient.Config, err
 	config.QPS = c.QPS
 	config.Burst = c.Burst
 	return config, nil
-}
-
-func (c *hollowNodeConfig) bootstrapClientConfig() error {
-	if c.BootstrapKubeconfigPath != "" {
-		return bootstrap.LoadClientCert(context.TODO(), c.KubeconfigPath, c.BootstrapKubeconfigPath, c.CertDirectory, types.NodeName(c.NodeName))
-	}
-	return nil
 }
 
 func (c *hollowNodeConfig) createHollowKubeletOptions() *kubemark.HollowKubeletOptions {
@@ -190,10 +177,6 @@ func run(ctx context.Context, config *hollowNodeConfig) error {
 	}
 
 	// create a client to communicate with API server.
-	err := config.bootstrapClientConfig()
-	if err != nil {
-		return fmt.Errorf("Failed to bootstrap, error: %w. Exiting", err)
-	}
 	clientConfig, err := config.createClientConfigFromFile()
 	if err != nil {
 		return fmt.Errorf("Failed to create a ClientConfig, error: %w. Exiting", err)
