@@ -127,7 +127,7 @@ func (kl *Kubelet) runPod(ctx context.Context, pod *v1.Pod, retryDelay time.Dura
 			return nil
 		}
 		klog.InfoS("Pod's containers not running: syncing", "pod", klog.KObj(pod))
-		
+
 		if isTerminal, err = kl.syncPod(context.Background(), kubetypes.SyncPodUpdate, pod, status); err != nil {
 			return fmt.Errorf("error syncing pod %q: %v", format.Pod(pod), err)
 		}
