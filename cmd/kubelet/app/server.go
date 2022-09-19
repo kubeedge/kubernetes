@@ -550,7 +550,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		kubeDeps.HeartbeatClient = nil
 		klog.InfoS("Standalone mode, no API client")
 
-	case kubeDeps.KubeClient == nil, kubeDeps.EventClient == nil, kubeDeps.HeartbeatClient == nil:
+	case kubeDeps.KubeClient == nil, kubeDeps.HeartbeatClient == nil:
 		clientConfig, closeAllConns, err := buildKubeletClientConfig(ctx, s, nodeName)
 		if err != nil {
 			return err
@@ -563,15 +563,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		kubeDeps.KubeClient, err = clientset.NewForConfig(clientConfig)
 		if err != nil {
 			return fmt.Errorf("failed to initialize kubelet client: %w", err)
-		}
-
-		// make a separate client for events
-		eventClientConfig := *clientConfig
-		eventClientConfig.QPS = float32(s.EventRecordQPS)
-		eventClientConfig.Burst = int(s.EventBurst)
-		kubeDeps.EventClient, err = v1core.NewForConfig(&eventClientConfig)
-		if err != nil {
-			return fmt.Errorf("failed to initialize kubelet event client: %w", err)
 		}
 
 		// make a separate client for heartbeat with throttling disabled and a timeout attached
