@@ -63,7 +63,6 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/certificate"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/component-helpers/apimachinery/lease"
 	internalapi "k8s.io/cri-api/pkg/apis"
@@ -79,7 +78,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/apis/config/v1beta1"
 	"k8s.io/kubernetes/pkg/kubelet/apis/podresources"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
-	kubeletcertificate "k8s.io/kubernetes/pkg/kubelet/certificate"
 	"k8s.io/kubernetes/pkg/kubelet/clustertrustbundle"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager"
@@ -744,31 +742,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	}
 	klet.imageManager = imageManager
 
-	if kubeDeps.TLSOptions != nil {
-		if kubeCfg.ServerTLSBootstrap && utilfeature.DefaultFeatureGate.Enabled(features.RotateKubeletServerCertificate) {
-			klet.serverCertificateManager, err = kubeletcertificate.NewKubeletServerCertificateManager(klet.kubeClient, kubeCfg, klet.nodeName, klet.getLastObservedNodeAddresses, certDirectory)
-			if err != nil {
-				return nil, fmt.Errorf("failed to initialize certificate manager: %w", err)
-			}
-
-		} else if kubeDeps.TLSOptions.CertFile != "" && kubeDeps.TLSOptions.KeyFile != "" && utilfeature.DefaultFeatureGate.Enabled(features.ReloadKubeletServerCertificateFile) {
-			klet.serverCertificateManager, err = kubeletcertificate.NewKubeletServerCertificateDynamicFileManager(kubeDeps.TLSOptions.CertFile, kubeDeps.TLSOptions.KeyFile)
-			if err != nil {
-				return nil, fmt.Errorf("failed to initialize file based certificate manager: %w", err)
-			}
-		}
-
-		if klet.serverCertificateManager != nil {
-			kubeDeps.TLSOptions.Config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-				cert := klet.serverCertificateManager.Current()
-				if cert == nil {
-					return nil, fmt.Errorf("no serving certificate available for the kubelet")
-				}
-				return cert, nil
-			}
-		}
-	}
-
 	if kubeDeps.ProbeManager != nil {
 		klet.probeManager = kubeDeps.ProbeManager
 	} else {
@@ -1126,9 +1099,6 @@ type Kubelet struct {
 	// Cached MachineInfo returned by cadvisor.
 	machineInfoLock sync.RWMutex
 	machineInfo     *cadvisorapi.MachineInfo
-
-	// Handles certificate rotations.
-	serverCertificateManager certificate.Manager
 
 	// Reference to this node.
 	nodeRef *v1.ObjectReference
@@ -1498,11 +1468,6 @@ func (kl *Kubelet) initializeModules() error {
 
 	// Start the image manager.
 	kl.imageManager.Start()
-
-	// Start the certificate manager if it was enabled.
-	if kl.serverCertificateManager != nil {
-		kl.serverCertificateManager.Start()
-	}
 
 	// Start out of memory watcher.
 	if kl.oomWatcher != nil {
