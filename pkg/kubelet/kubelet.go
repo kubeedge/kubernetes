@@ -18,7 +18,6 @@ package kubelet
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"math"
 	"net"
@@ -51,7 +50,6 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/certificate"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/component-helpers/apimachinery/lease"
 	internalapi "k8s.io/cri-api/pkg/apis"
@@ -62,7 +60,6 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
-	kubeletcertificate "k8s.io/kubernetes/pkg/kubelet/certificate"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	"k8s.io/kubernetes/pkg/kubelet/config"
 	"k8s.io/kubernetes/pkg/kubelet/configmap"
@@ -660,20 +657,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	}
 	klet.imageManager = imageManager
 
-	if kubeCfg.ServerTLSBootstrap && kubeDeps.TLSOptions != nil && utilfeature.DefaultFeatureGate.Enabled(features.RotateKubeletServerCertificate) {
-		klet.serverCertificateManager, err = kubeletcertificate.NewKubeletServerCertificateManager(klet.kubeClient, kubeCfg, klet.nodeName, klet.getLastObservedNodeAddresses, certDirectory)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize certificate manager: %v", err)
-		}
-		kubeDeps.TLSOptions.Config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-			cert := klet.serverCertificateManager.Current()
-			if cert == nil {
-				return nil, fmt.Errorf("no serving certificate available for the kubelet")
-			}
-			return cert, nil
-		}
-	}
-
 	klet.probeManager = prober.NewManager(
 		klet.statusManager,
 		klet.livenessManager,
@@ -910,9 +893,6 @@ type Kubelet struct {
 	// Cached MachineInfo returned by cadvisor.
 	machineInfoLock sync.RWMutex
 	machineInfo     *cadvisorapi.MachineInfo
-
-	// Handles certificate rotations.
-	serverCertificateManager certificate.Manager
 
 	// Syncs pods statuses with apiserver; also used as a cache of statuses.
 	statusManager status.Manager
@@ -1281,11 +1261,6 @@ func (kl *Kubelet) initializeModules() error {
 
 	// Start the image manager.
 	kl.imageManager.Start()
-
-	// Start the certificate manager if it was enabled.
-	if kl.serverCertificateManager != nil {
-		kl.serverCertificateManager.Start()
-	}
 
 	// Start out of memory watcher.
 	if kl.oomWatcher != nil {
