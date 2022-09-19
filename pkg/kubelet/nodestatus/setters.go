@@ -33,9 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	cloudprovider "k8s.io/cloud-provider"
-	cloudproviderapi "k8s.io/cloud-provider/api"
-	cloudprovidernodeutil "k8s.io/cloud-provider/node/helpers"
 	"k8s.io/component-base/version"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
@@ -60,12 +57,10 @@ const (
 type Setter func(ctx context.Context, node *v1.Node) error
 
 // NodeAddress returns a Setter that updates address-related information on the node.
-func NodeAddress(nodeIPs []net.IP, // typically Kubelet.nodeIPs
-	validateNodeIPFunc func(net.IP) error, // typically Kubelet.nodeIPValidator
-	hostname string, // typically Kubelet.hostname
-	hostnameOverridden bool, // was the hostname force set?
-	externalCloudProvider bool, // typically Kubelet.externalCloudProvider
-	cloud cloudprovider.Interface, // typically Kubelet.cloud
+func NodeAddress(nodeIPs []net.IP,                      // typically Kubelet.nodeIPs
+	validateNodeIPFunc func(net.IP) error,              // typically Kubelet.nodeIPValidator
+	hostname string,                                    // typically Kubelet.hostname
+	hostnameOverridden bool,                            // was the hostname force set?
 	nodeAddressesFunc func() ([]v1.NodeAddress, error), // typically Kubelet.cloudResourceSyncManager.NodeAddresses
 ) Setter {
 	var nodeIP, secondaryNodeIP net.IP
@@ -95,96 +90,7 @@ func NodeAddress(nodeIPs []net.IP, // typically Kubelet.nodeIPs
 			klog.V(4).InfoS("Using secondary node IP", "IP", secondaryNodeIP.String())
 		}
 
-		if (externalCloudProvider || cloud != nil) && nodeIPSpecified {
-			// Annotate the Node object with nodeIP for external cloud provider.
-			//
-			// We do this even when external CCM is not configured to cover a situation
-			// during migration from legacy to external CCM: when CCM is running the
-			// node controller in the cluster but kubelet is still running the in-tree
-			// provider. Adding this annotation in all cases ensures that while
-			// Addresses flap between the competing controllers, they at least flap
-			// consistently.
-			//
-			// We do not add the annotation in the case where there is no cloud
-			// controller at all, as we don't expect to migrate these clusters to use an
-			// external CCM.
-			if node.ObjectMeta.Annotations == nil {
-				node.ObjectMeta.Annotations = make(map[string]string)
-			}
-			annotation := nodeIP.String()
-			if secondaryNodeIPSpecified {
-				annotation += "," + secondaryNodeIP.String()
-			}
-			node.ObjectMeta.Annotations[cloudproviderapi.AnnotationAlphaProvidedIPAddr] = annotation
-		} else if node.ObjectMeta.Annotations != nil {
-			// Clean up stale annotations if no longer using a cloud provider or
-			// no longer overriding node IP.
-			delete(node.ObjectMeta.Annotations, cloudproviderapi.AnnotationAlphaProvidedIPAddr)
-		}
-
-		if externalCloudProvider {
-			// If --cloud-provider=external and node address is already set,
-			// then we return early because provider set addresses should take precedence.
-			// Otherwise, we try to use the node IP defined via flags and let the cloud provider override it later
-			// This should alleviate a lot of the bootstrapping issues with out-of-tree providers
-			if len(node.Status.Addresses) > 0 {
-				return nil
-			}
-			// If nodeIPs are not specified wait for the external cloud-provider to set the node addresses.
-			// Otherwise uses them on the assumption that the installer/administrator has the previous knowledge
-			// required to ensure the external cloud provider will use the same addresses to avoid the issues explained
-			// in https://github.com/kubernetes/kubernetes/issues/120720.
-			// We are already hinting the external cloud provider via the annotation AnnotationAlphaProvidedIPAddr.
-			if !nodeIPSpecified {
-				return nil
-			}
-		}
-		if cloud != nil {
-			cloudNodeAddresses, err := nodeAddressesFunc()
-			if err != nil {
-				return err
-			}
-
-			nodeAddresses, err := cloudprovidernodeutil.GetNodeAddressesFromNodeIPLegacy(nodeIP, cloudNodeAddresses)
-			if err != nil {
-				return err
-			}
-
-			switch {
-			case len(cloudNodeAddresses) == 0:
-				// the cloud provider didn't specify any addresses
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeHostName, Address: hostname})
-
-			case !hasAddressType(cloudNodeAddresses, v1.NodeHostName) && hasAddressValue(cloudNodeAddresses, hostname):
-				// the cloud provider didn't specify an address of type Hostname,
-				// but the auto-detected hostname matched an address reported by the cloud provider,
-				// so we can add it and count on the value being verifiable via cloud provider metadata
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeHostName, Address: hostname})
-
-			case hostnameOverridden:
-				// the hostname was force-set via flag/config.
-				// this means the hostname might not be able to be validated via cloud provider metadata,
-				// but was a choice by the kubelet deployer we should honor
-				var existingHostnameAddress *v1.NodeAddress
-				for i := range nodeAddresses {
-					if nodeAddresses[i].Type == v1.NodeHostName {
-						existingHostnameAddress = &nodeAddresses[i]
-						break
-					}
-				}
-
-				if existingHostnameAddress == nil {
-					// no existing Hostname address found, add it
-					klog.InfoS("Adding overridden hostname to cloudprovider-reported addresses", "hostname", hostname)
-					nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeHostName, Address: hostname})
-				} else if existingHostnameAddress.Address != hostname {
-					// override the Hostname address reported by the cloud provider
-					klog.InfoS("Replacing cloudprovider-reported hostname with overridden hostname", "cloudProviderHostname", existingHostnameAddress.Address, "overriddenHostname", hostname)
-					existingHostnameAddress.Address = hostname
-				}
-			}
-			node.Status.Addresses = nodeAddresses
-		} else if nodeIPSpecified && secondaryNodeIPSpecified {
+		if nodeIPSpecified && secondaryNodeIPSpecified {
 			node.Status.Addresses = []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: nodeIP.String()},
 				{Type: v1.NodeInternalIP, Address: secondaryNodeIP.String()},
@@ -258,11 +164,11 @@ func hasAddressValue(addresses []v1.NodeAddress, addressValue string) bool {
 func MachineInfo(nodeName string,
 	maxPods int,
 	podsPerCore int,
-	machineInfoFunc func() (*cadvisorapiv1.MachineInfo, error), // typically Kubelet.GetCachedMachineInfo
-	capacityFunc func(localStorageCapacityIsolation bool) v1.ResourceList, // typically Kubelet.containerManager.GetCapacity
+	machineInfoFunc func() (*cadvisorapiv1.MachineInfo, error),                           // typically Kubelet.GetCachedMachineInfo
+	capacityFunc func(localStorageCapacityIsolation bool) v1.ResourceList,                // typically Kubelet.containerManager.GetCapacity
 	devicePluginResourceCapacityFunc func() (v1.ResourceList, v1.ResourceList, []string), // typically Kubelet.containerManager.GetDevicePluginResourceCapacity
-	nodeAllocatableReservationFunc func() v1.ResourceList, // typically Kubelet.containerManager.GetNodeAllocatableReservation
-	recordEventFunc func(eventType, event, message string), // typically Kubelet.recordEvent
+	nodeAllocatableReservationFunc func() v1.ResourceList,                                // typically Kubelet.containerManager.GetNodeAllocatableReservation
+	recordEventFunc func(eventType, event, message string),                               // typically Kubelet.recordEvent
 	localStorageCapacityIsolation bool,
 ) Setter {
 	return func(ctx context.Context, node *v1.Node) error {
@@ -392,8 +298,8 @@ func MachineInfo(nodeName string,
 }
 
 // VersionInfo returns a Setter that updates version-related information on the node.
-func VersionInfo(versionInfoFunc func() (*cadvisorapiv1.VersionInfo, error), // typically Kubelet.cadvisor.VersionInfo
-	runtimeTypeFunc func() string, // typically Kubelet.containerRuntime.Type
+func VersionInfo(versionInfoFunc func() (*cadvisorapiv1.VersionInfo, error),     // typically Kubelet.cadvisor.VersionInfo
+	runtimeTypeFunc func() string,                                               // typically Kubelet.containerRuntime.Type
 	runtimeVersionFunc func(ctx context.Context) (kubecontainer.Version, error), // typically Kubelet.containerRuntime.Version
 ) Setter {
 	return func(ctx context.Context, node *v1.Node) error {
@@ -482,13 +388,13 @@ func GoRuntime() Setter {
 
 // ReadyCondition returns a Setter that updates the v1.NodeReady condition on the node.
 func ReadyCondition(
-	nowFunc func() time.Time, // typically Kubelet.clock.Now
-	runtimeErrorsFunc func() error, // typically Kubelet.runtimeState.runtimeErrors
-	networkErrorsFunc func() error, // typically Kubelet.runtimeState.networkErrors
-	storageErrorsFunc func() error, // typically Kubelet.runtimeState.storageErrors
-	appArmorValidateHostFunc func() error, // typically Kubelet.appArmorValidator.ValidateHost, might be nil depending on whether there was an appArmorValidator
-	cmStatusFunc func() cm.Status, // typically Kubelet.containerManager.Status
-	nodeShutdownManagerErrorsFunc func() error, // typically kubelet.shutdownManager.errors.
+	nowFunc func() time.Time,                      // typically Kubelet.clock.Now
+	runtimeErrorsFunc func() error,                // typically Kubelet.runtimeState.runtimeErrors
+	networkErrorsFunc func() error,                // typically Kubelet.runtimeState.networkErrors
+	storageErrorsFunc func() error,                // typically Kubelet.runtimeState.storageErrors
+	appArmorValidateHostFunc func() error,         // typically Kubelet.appArmorValidator.ValidateHost, might be nil depending on whether there was an appArmorValidator
+	cmStatusFunc func() cm.Status,                 // typically Kubelet.containerManager.Status
+	nodeShutdownManagerErrorsFunc func() error,    // typically kubelet.shutdownManager.errors.
 	recordEventFunc func(eventType, event string), // typically Kubelet.recordNodeStatusEvent
 	localStorageCapacityIsolation bool,
 ) Setter {
@@ -574,8 +480,8 @@ func ReadyCondition(
 
 // MemoryPressureCondition returns a Setter that updates the v1.NodeMemoryPressure condition on the node.
 func MemoryPressureCondition(nowFunc func() time.Time, // typically Kubelet.clock.Now
-	pressureFunc func() bool, // typically Kubelet.evictionManager.IsUnderMemoryPressure
-	recordEventFunc func(eventType, event string), // typically Kubelet.recordNodeStatusEvent
+	pressureFunc func() bool,                          // typically Kubelet.evictionManager.IsUnderMemoryPressure
+	recordEventFunc func(eventType, event string),     // typically Kubelet.recordNodeStatusEvent
 ) Setter {
 	return func(ctx context.Context, node *v1.Node) error {
 		currentTime := metav1.NewTime(nowFunc())
@@ -635,8 +541,8 @@ func MemoryPressureCondition(nowFunc func() time.Time, // typically Kubelet.cloc
 
 // PIDPressureCondition returns a Setter that updates the v1.NodePIDPressure condition on the node.
 func PIDPressureCondition(nowFunc func() time.Time, // typically Kubelet.clock.Now
-	pressureFunc func() bool, // typically Kubelet.evictionManager.IsUnderPIDPressure
-	recordEventFunc func(eventType, event string), // typically Kubelet.recordNodeStatusEvent
+	pressureFunc func() bool,                       // typically Kubelet.evictionManager.IsUnderPIDPressure
+	recordEventFunc func(eventType, event string),  // typically Kubelet.recordNodeStatusEvent
 ) Setter {
 	return func(ctx context.Context, node *v1.Node) error {
 		currentTime := metav1.NewTime(nowFunc())
@@ -696,8 +602,8 @@ func PIDPressureCondition(nowFunc func() time.Time, // typically Kubelet.clock.N
 
 // DiskPressureCondition returns a Setter that updates the v1.NodeDiskPressure condition on the node.
 func DiskPressureCondition(nowFunc func() time.Time, // typically Kubelet.clock.Now
-	pressureFunc func() bool, // typically Kubelet.evictionManager.IsUnderDiskPressure
-	recordEventFunc func(eventType, event string), // typically Kubelet.recordNodeStatusEvent
+	pressureFunc func() bool,                        // typically Kubelet.evictionManager.IsUnderDiskPressure
+	recordEventFunc func(eventType, event string),   // typically Kubelet.recordNodeStatusEvent
 ) Setter {
 	return func(ctx context.Context, node *v1.Node) error {
 		currentTime := metav1.NewTime(nowFunc())
@@ -756,7 +662,7 @@ func DiskPressureCondition(nowFunc func() time.Time, // typically Kubelet.clock.
 }
 
 // VolumesInUse returns a Setter that updates the volumes in use on the node.
-func VolumesInUse(syncedFunc func() bool, // typically Kubelet.volumeManager.ReconcilerStatesHasBeenSynced
+func VolumesInUse(syncedFunc func() bool,          // typically Kubelet.volumeManager.ReconcilerStatesHasBeenSynced
 	volumesInUseFunc func() []v1.UniqueVolumeName, // typically Kubelet.volumeManager.GetVolumesInUse
 ) Setter {
 	return func(ctx context.Context, node *v1.Node) error {
