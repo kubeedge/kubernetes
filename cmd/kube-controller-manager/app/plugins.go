@@ -27,21 +27,12 @@ import (
 
 	// Cloud providers
 	cloudprovider "k8s.io/cloud-provider"
-	// ensure the cloud providers are installed
-	_ "k8s.io/kubernetes/pkg/cloudprovider/providers"
 	// Volume plugins
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/csi"
-	"k8s.io/kubernetes/pkg/volume/fc"
 	"k8s.io/kubernetes/pkg/volume/flexvolume"
-	"k8s.io/kubernetes/pkg/volume/flocker"
-	"k8s.io/kubernetes/pkg/volume/glusterfs"
 	"k8s.io/kubernetes/pkg/volume/hostpath"
-	"k8s.io/kubernetes/pkg/volume/iscsi"
-	"k8s.io/kubernetes/pkg/volume/local"
 	"k8s.io/kubernetes/pkg/volume/nfs"
-	"k8s.io/kubernetes/pkg/volume/quobyte"
-	"k8s.io/kubernetes/pkg/volume/storageos"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -61,9 +52,7 @@ func ProbeAttachableVolumePlugins() ([]volume.VolumePlugin, error) {
 	if err != nil {
 		return allPlugins, err
 	}
-	allPlugins = append(allPlugins, storageos.ProbeVolumePlugins()...)
-	allPlugins = append(allPlugins, fc.ProbeVolumePlugins()...)
-	allPlugins = append(allPlugins, iscsi.ProbeVolumePlugins()...)
+
 	allPlugins = append(allPlugins, csi.ProbeVolumePlugins()...)
 	return allPlugins, nil
 }
@@ -83,9 +72,6 @@ func ProbeExpandableVolumePlugins(config persistentvolumeconfig.VolumeConfigurat
 	if err != nil {
 		return allPlugins, err
 	}
-	allPlugins = append(allPlugins, glusterfs.ProbeVolumePlugins()...)
-	allPlugins = append(allPlugins, storageos.ProbeVolumePlugins()...)
-	allPlugins = append(allPlugins, fc.ProbeVolumePlugins()...)
 	return allPlugins, nil
 }
 
@@ -124,18 +110,11 @@ func ProbeControllerVolumePlugins(cloud cloudprovider.Interface, config persiste
 		klog.Fatalf("Could not create NFS recycler pod from file %s: %+v", config.PersistentVolumeRecyclerConfiguration.PodTemplateFilePathNFS, err)
 	}
 	allPlugins = append(allPlugins, nfs.ProbeVolumePlugins(nfsConfig)...)
-	allPlugins = append(allPlugins, glusterfs.ProbeVolumePlugins()...)
-	// add rbd provisioner
-	allPlugins = append(allPlugins, quobyte.ProbeVolumePlugins()...)
 	var err error
 	allPlugins, err = appendExpandableLegacyProviderVolumes(allPlugins, utilfeature.DefaultFeatureGate)
 	if err != nil {
 		return allPlugins, err
 	}
-
-	allPlugins = append(allPlugins, flocker.ProbeVolumePlugins()...)
-	allPlugins = append(allPlugins, local.ProbeVolumePlugins()...)
-	allPlugins = append(allPlugins, storageos.ProbeVolumePlugins()...)
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.CSIInlineVolume) {
 		allPlugins = append(allPlugins, csi.ProbeVolumePlugins()...)
