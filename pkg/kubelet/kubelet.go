@@ -59,7 +59,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/certificate"
 	"k8s.io/client-go/util/flowcontrol"
-	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/component-helpers/apimachinery/lease"
 	internalapi "k8s.io/cri-api/pkg/apis"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -73,7 +72,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/apis/podresources"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	kubeletcertificate "k8s.io/kubernetes/pkg/kubelet/certificate"
-	"k8s.io/kubernetes/pkg/kubelet/cloudresource"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	draplugin "k8s.io/kubernetes/pkg/kubelet/cm/dra/plugin"
 	"k8s.io/kubernetes/pkg/kubelet/config"
@@ -250,7 +248,6 @@ type Dependencies struct {
 	// Injected Dependencies
 	Auth                     server.AuthInterface
 	CAdvisorInterface        cadvisor.Interface
-	Cloud                    cloudprovider.Interface
 	ContainerManager         cm.ContainerManager
 	EventClient              v1core.EventsGetter
 	HeartbeatClient          clientset.Interface
@@ -340,8 +337,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	hostnameOverridden bool,
 	nodeName types.NodeName,
 	nodeIPs []net.IP,
-	providerID string,
-	cloudProvider string,
 	certDirectory string,
 	rootDirectory string,
 	imageCredentialProviderConfigFile string,
@@ -369,11 +364,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	}
 	if kubeCfg.SyncFrequency.Duration <= 0 {
 		return nil, fmt.Errorf("invalid sync frequency %d", kubeCfg.SyncFrequency.Duration)
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(features.DisableCloudProviders) && cloudprovider.IsDeprecatedInternal(cloudProvider) {
-		cloudprovider.DisableWarningForProvider(cloudProvider)
-		return nil, fmt.Errorf("cloud provider %q was specified, but built-in cloud providers are disabled. Please set --cloud-provider=external and migrate to an external cloud provider", cloudProvider)
 	}
 
 	var nodeHasSynced cache.InformerSynced
@@ -525,9 +515,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		streamingConnectionIdleTimeout: kubeCfg.StreamingConnectionIdleTimeout.Duration,
 		recorder:                       kubeDeps.Recorder,
 		cadvisor:                       kubeDeps.CAdvisorInterface,
-		cloud:                          kubeDeps.Cloud,
-		externalCloudProvider:          cloudprovider.IsExternal(cloudProvider),
-		providerID:                     providerID,
 		nodeRef:                        nodeRef,
 		nodeLabels:                     nodeLabels,
 		nodeStatusUpdateFrequency:      kubeCfg.NodeStatusUpdateFrequency.Duration,
@@ -552,10 +539,6 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		keepTerminatedPodVolumes:       keepTerminatedPodVolumes,
 		nodeStatusMaxImages:            nodeStatusMaxImages,
 		tracer:                         tracer,
-	}
-
-	if klet.cloud != nil {
-		klet.cloudResourceSyncManager = cloudresource.NewSyncManager(klet.cloud, nodeName, klet.nodeStatusUpdateFrequency)
 	}
 
 	var secretManager secret.Manager
@@ -1092,13 +1075,6 @@ type Kubelet struct {
 	// Handles certificate rotations.
 	serverCertificateManager certificate.Manager
 
-	// Cloud provider interface.
-	cloud cloudprovider.Interface
-	// Handles requests to cloud provider with timeout
-	cloudResourceSyncManager cloudresource.SyncManager
-
-	// Indicates that the node initialization happens in an external cloud controller
-	externalCloudProvider bool
 	// Reference to this node.
 	nodeRef *v1.ObjectReference
 
@@ -1218,9 +1194,6 @@ type Kubelet struct {
 
 	// use this function to validate the kubelet nodeIP
 	nodeIPValidator func(net.IP) error
-
-	// If non-nil, this is a unique identifier for the node in an external database, eg. cloudprovider
-	providerID string
 
 	// clock is an interface that provides time related functionality in a way that makes it
 	// easy to test the code.
@@ -1577,11 +1550,6 @@ func (kl *Kubelet) Run(updates <-chan kubetypes.PodUpdate) {
 	}
 	if kl.kubeClient == nil {
 		klog.InfoS("No API server defined - no node status update will be sent")
-	}
-
-	// Start the cloud provider sync manager
-	if kl.cloudResourceSyncManager != nil {
-		go kl.cloudResourceSyncManager.Run(wait.NeverStop)
 	}
 
 	if err := kl.initializeModules(); err != nil {
