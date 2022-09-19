@@ -32,8 +32,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"k8s.io/client-go/informers"
-
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 	libcontaineruserns "github.com/opencontainers/runc/libcontainer/userns"
 	"k8s.io/mount-utils"
@@ -42,7 +40,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -388,26 +385,9 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 
 	var nodeHasSynced cache.InformerSynced
 	var nodeLister corelisters.NodeLister
-
-	// If kubeClient == nil, we are running in standalone mode (i.e. no API servers)
-	// If not nil, we are running as part of a cluster and should sync w/API
-	if kubeDeps.KubeClient != nil {
-		kubeInformers := informers.NewSharedInformerFactoryWithOptions(kubeDeps.KubeClient, 0, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.FieldSelector = fields.Set{metav1.ObjectNameField: string(nodeName)}.String()
-		}))
-		nodeLister = kubeInformers.Core().V1().Nodes().Lister()
-		nodeHasSynced = func() bool {
-			return kubeInformers.Core().V1().Nodes().Informer().HasSynced()
-		}
-		kubeInformers.Start(wait.NeverStop)
-		klog.InfoS("Attempting to sync node with API server")
-	} else {
-		// we don't have a client to sync!
-		nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-		nodeLister = corelisters.NewNodeLister(nodeIndexer)
-		nodeHasSynced = func() bool { return true }
-		klog.InfoS("Kubelet is running in standalone mode, will skip API server sync")
-	}
+	nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	nodeLister = corelisters.NewNodeLister(nodeIndexer)
+	nodeHasSynced = func() bool { return true }
 
 	if kubeDeps.PodConfig == nil {
 		var err error
