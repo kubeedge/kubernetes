@@ -220,13 +220,6 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 				klog.InfoS("unsupported configuration:KubeletCgroups is not within KubeReservedCgroup")
 			}
 
-			// The features.DynamicKubeletConfig is locked to false,
-			// feature gate is not locked using the LockedToDefault flag
-			// to make sure node authorizer can keep working with the older nodes
-			if utilfeature.DefaultFeatureGate.Enabled(features.DynamicKubeletConfig) {
-				return fmt.Errorf("cannot set feature gate %v to %v, feature is locked to %v", features.DynamicKubeletConfig, true, false)
-			}
-
 			// Config and flags parsed, now we can initialize logging.
 			logs.InitLogs()
 			logOption := &logs.Options{Config: kubeletConfig.Logging}
