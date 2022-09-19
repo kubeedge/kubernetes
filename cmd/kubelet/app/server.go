@@ -59,7 +59,6 @@ import (
 	"k8s.io/client-go/util/certificate"
 	"k8s.io/client-go/util/connrotation"
 	"k8s.io/client-go/util/keyutil"
-	cloudprovider "k8s.io/cloud-provider"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/configz"
 	"k8s.io/component-base/featuregate"
@@ -413,7 +412,6 @@ func UnsecuredDependencies(s *options.KubeletServer, featureGate featuregate.Fea
 	return &kubelet.Dependencies{
 		Auth:                nil, // default does not enforce auth[nz]
 		CAdvisorInterface:   nil, // cadvisor.New launches background processes (bg http.ListenAndServe, and some bg cleaners), not set here
-		Cloud:               nil, // cloud provider might start background processes
 		ContainerManager:    nil,
 		DockerOptions:       dockerOptions,
 		KubeClient:          nil,
@@ -568,25 +566,11 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		}
 	}
 
-	if kubeDeps.Cloud == nil {
-		if !cloudprovider.IsExternal(s.CloudProvider) {
-			cloudprovider.DeprecationWarningForProvider(s.CloudProvider)
-			cloud, err := cloudprovider.InitCloudProvider(s.CloudProvider, s.CloudConfigFile)
-			if err != nil {
-				return err
-			}
-			if cloud != nil {
-				klog.V(2).InfoS("Successfully initialized cloud provider", "cloudProvider", s.CloudProvider, "cloudConfigFile", s.CloudConfigFile)
-			}
-			kubeDeps.Cloud = cloud
-		}
-	}
-
 	hostName, err := nodeutil.GetHostname(s.HostnameOverride)
 	if err != nil {
 		return err
 	}
-	nodeName, err := getNodeName(kubeDeps.Cloud, hostName)
+	nodeName, err := getNodeName(hostName)
 	if err != nil {
 		return err
 	}
@@ -988,24 +972,8 @@ func kubeClientConfigOverrides(s *options.KubeletServer, clientConfig *restclien
 
 // getNodeName returns the node name according to the cloud provider
 // if cloud provider is specified. Otherwise, returns the hostname of the node.
-func getNodeName(cloud cloudprovider.Interface, hostname string) (types.NodeName, error) {
-	if cloud == nil {
-		return types.NodeName(hostname), nil
-	}
-
-	instances, ok := cloud.Instances()
-	if !ok {
-		return "", fmt.Errorf("failed to get instances from cloud provider")
-	}
-
-	nodeName, err := instances.CurrentNodeName(context.TODO(), hostname)
-	if err != nil {
-		return "", fmt.Errorf("error fetching current node name from cloud provider: %w", err)
-	}
-
-	klog.V(2).InfoS("Cloud provider determined current node", "nodeName", klog.KRef("", string(nodeName)))
-
-	return nodeName, nil
+func getNodeName(hostname string) (types.NodeName, error) {
+	return types.NodeName(hostname), nil
 }
 
 // InitializeTLS checks for a configured TLSCertFile and TLSPrivateKeyFile: if unspecified a new self-signed
@@ -1111,7 +1079,7 @@ func RunKubelet(kubeServer *options.KubeletServer, kubeDeps *kubelet.Dependencie
 		return err
 	}
 	// Query the cloud provider for our node name, default to hostname if kubeDeps.Cloud == nil
-	nodeName, err := getNodeName(kubeDeps.Cloud, hostname)
+	nodeName, err := getNodeName(hostname)
 	if err != nil {
 		return err
 	}
@@ -1134,8 +1102,6 @@ func RunKubelet(kubeServer *options.KubeletServer, kubeDeps *kubelet.Dependencie
 		return fmt.Errorf("dual-stack --node-ip %q not supported in a single-stack cluster", kubeServer.NodeIP)
 	} else if len(nodeIPs) > 2 || (len(nodeIPs) == 2 && utilnet.IsIPv6(nodeIPs[0]) == utilnet.IsIPv6(nodeIPs[1])) {
 		return fmt.Errorf("bad --node-ip %q; must contain either a single IP or a dual-stack pair of IPs", kubeServer.NodeIP)
-	} else if len(nodeIPs) == 2 && kubeServer.CloudProvider != "" {
-		return fmt.Errorf("dual-stack --node-ip %q not supported when using a cloud provider", kubeServer.NodeIP)
 	} else if len(nodeIPs) == 2 && (nodeIPs[0].IsUnspecified() || nodeIPs[1].IsUnspecified()) {
 		return fmt.Errorf("dual-stack --node-ip %q cannot include '0.0.0.0' or '::'", kubeServer.NodeIP)
 	}
@@ -1163,8 +1129,6 @@ func RunKubelet(kubeServer *options.KubeletServer, kubeDeps *kubelet.Dependencie
 		hostnameOverridden,
 		nodeName,
 		nodeIPs,
-		kubeServer.ProviderID,
-		kubeServer.CloudProvider,
 		kubeServer.CertDirectory,
 		kubeServer.RootDirectory,
 		kubeServer.ImageCredentialProviderConfigFile,
@@ -1239,8 +1203,6 @@ func createAndInitKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	hostnameOverridden bool,
 	nodeName types.NodeName,
 	nodeIPs []net.IP,
-	providerID string,
-	cloudProvider string,
 	certDirectory string,
 	rootDirectory string,
 	imageCredentialProviderConfigFile string,
@@ -1274,8 +1236,6 @@ func createAndInitKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		hostnameOverridden,
 		nodeName,
 		nodeIPs,
-		providerID,
-		cloudProvider,
 		certDirectory,
 		rootDirectory,
 		imageCredentialProviderConfigFile,

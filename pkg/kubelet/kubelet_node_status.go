@@ -32,8 +32,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	cloudprovider "k8s.io/cloud-provider"
-	cloudproviderapi "k8s.io/cloud-provider/api"
 	"k8s.io/klog/v2"
 	kubeletapis "k8s.io/kubelet/pkg/apis"
 	k8s_api_v1 "k8s.io/kubernetes/pkg/apis/core/v1"
@@ -331,27 +329,8 @@ func (kl *Kubelet) initialNode(ctx context.Context) (*v1.Node, error) {
 		nodeTaints = append(nodeTaints, unschedulableTaint)
 	}
 
-	if kl.externalCloudProvider {
-		taint := v1.Taint{
-			Key:    cloudproviderapi.TaintExternalCloudProvider,
-			Value:  "true",
-			Effect: v1.TaintEffectNoSchedule,
-		}
-
-		nodeTaints = append(nodeTaints, taint)
-	}
 	if len(nodeTaints) > 0 {
 		node.Spec.Taints = nodeTaints
-	}
-	// Initially, set NodeNetworkUnavailable to true.
-	if kl.providerRequiresNetworkingConfiguration() {
-		node.Status.Conditions = append(node.Status.Conditions, v1.NodeCondition{
-			Type:               v1.NodeNetworkUnavailable,
-			Status:             v1.ConditionTrue,
-			Reason:             "NoRouteCreated",
-			Message:            "Node created without a route",
-			LastTransitionTime: metav1.NewTime(kl.clock.Now()),
-		})
 	}
 
 	if kl.enableControllerAttachDetach {
@@ -379,59 +358,6 @@ func (kl *Kubelet) initialNode(ctx context.Context) (*v1.Node, error) {
 			klog.InfoS("the node label will overwrite default setting", "labelKey", k, "labelValue", v, "default", cv)
 		}
 		node.ObjectMeta.Labels[k] = v
-	}
-
-	if kl.providerID != "" {
-		node.Spec.ProviderID = kl.providerID
-	}
-
-	if kl.cloud != nil {
-		instances, ok := kl.cloud.Instances()
-		if !ok {
-			return nil, fmt.Errorf("failed to get instances from cloud provider")
-		}
-
-		// TODO: We can't assume that the node has credentials to talk to the
-		// cloudprovider from arbitrary nodes. At most, we should talk to a
-		// local metadata server here.
-		var err error
-		if node.Spec.ProviderID == "" {
-			node.Spec.ProviderID, err = cloudprovider.GetInstanceProviderID(ctx, kl.cloud, kl.nodeName)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		instanceType, err := instances.InstanceType(ctx, kl.nodeName)
-		if err != nil {
-			return nil, err
-		}
-		if instanceType != "" {
-			klog.InfoS("Adding label from cloud provider", "labelKey", v1.LabelInstanceType, "labelValue", instanceType)
-			node.ObjectMeta.Labels[v1.LabelInstanceType] = instanceType
-			klog.InfoS("Adding node label from cloud provider", "labelKey", v1.LabelInstanceTypeStable, "labelValue", instanceType)
-			node.ObjectMeta.Labels[v1.LabelInstanceTypeStable] = instanceType
-		}
-		// If the cloud has zone information, label the node with the zone information
-		zones, ok := kl.cloud.Zones()
-		if ok {
-			zone, err := zones.GetZone(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get zone from cloud provider: %v", err)
-			}
-			if zone.FailureDomain != "" {
-				klog.InfoS("Adding node label from cloud provider", "labelKey", v1.LabelFailureDomainBetaZone, "labelValue", zone.FailureDomain)
-				node.ObjectMeta.Labels[v1.LabelFailureDomainBetaZone] = zone.FailureDomain
-				klog.InfoS("Adding node label from cloud provider", "labelKey", v1.LabelTopologyZone, "labelValue", zone.FailureDomain)
-				node.ObjectMeta.Labels[v1.LabelTopologyZone] = zone.FailureDomain
-			}
-			if zone.Region != "" {
-				klog.InfoS("Adding node label from cloud provider", "labelKey", v1.LabelFailureDomainBetaRegion, "labelValue", zone.Region)
-				node.ObjectMeta.Labels[v1.LabelFailureDomainBetaRegion] = zone.Region
-				klog.InfoS("Adding node label from cloud provider", "labelKey", v1.LabelTopologyRegion, "labelValue", zone.Region)
-				node.ObjectMeta.Labels[v1.LabelTopologyRegion] = zone.Region
-			}
-		}
 	}
 
 	kl.setNodeStatus(node)
@@ -604,16 +530,14 @@ func (kl *Kubelet) getLastObservedNodeAddresses() []v1.NodeAddress {
 func (kl *Kubelet) defaultNodeStatusFuncs() []func(*v1.Node) error {
 	// if cloud is not nil, we expect the cloud resource sync manager to exist
 	var nodeAddressesFunc func() ([]v1.NodeAddress, error)
-	if kl.cloud != nil {
-		nodeAddressesFunc = kl.cloudResourceSyncManager.NodeAddresses
-	}
+
 	var validateHostFunc func() error
 	if kl.appArmorValidator != nil {
 		validateHostFunc = kl.appArmorValidator.ValidateHost
 	}
 	var setters []func(n *v1.Node) error
 	setters = append(setters,
-		nodestatus.NodeAddress(kl.nodeIPs, kl.nodeIPValidator, kl.hostname, kl.hostnameOverridden, kl.externalCloudProvider, kl.cloud, nodeAddressesFunc),
+		nodestatus.NodeAddress(kl.nodeIPs, kl.nodeIPValidator, kl.hostname, kl.hostnameOverridden, nodeAddressesFunc),
 		nodestatus.MachineInfo(string(kl.nodeName), kl.maxPods, kl.podsPerCore, kl.GetCachedMachineInfo, kl.containerManager.GetCapacity,
 			kl.containerManager.GetDevicePluginResourceCapacity, kl.containerManager.GetNodeAllocatableReservation, kl.recordEvent),
 		nodestatus.VersionInfo(kl.cadvisor.VersionInfo, kl.containerRuntime.Type, kl.containerRuntime.Version),

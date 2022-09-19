@@ -32,8 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	cloudprovider "k8s.io/cloud-provider"
-	cloudproviderapi "k8s.io/cloud-provider/api"
 	"k8s.io/component-base/version"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
@@ -61,8 +59,6 @@ func NodeAddress(nodeIPs []net.IP, // typically Kubelet.nodeIPs
 	validateNodeIPFunc func(net.IP) error, // typically Kubelet.nodeIPValidator
 	hostname string, // typically Kubelet.hostname
 	hostnameOverridden bool, // was the hostname force set?
-	externalCloudProvider bool, // typically Kubelet.externalCloudProvider
-	cloud cloudprovider.Interface, // typically Kubelet.cloud
 	nodeAddressesFunc func() ([]v1.NodeAddress, error), // typically Kubelet.cloudResourceSyncManager.NodeAddresses
 ) Setter {
 	var nodeIP, secondaryNodeIP net.IP
@@ -92,115 +88,7 @@ func NodeAddress(nodeIPs []net.IP, // typically Kubelet.nodeIPs
 			klog.V(4).InfoS("Using secondary node IP", "IP", secondaryNodeIP.String())
 		}
 
-		if externalCloudProvider {
-			if nodeIPSpecified {
-				if node.ObjectMeta.Annotations == nil {
-					node.ObjectMeta.Annotations = make(map[string]string)
-				}
-				node.ObjectMeta.Annotations[cloudproviderapi.AnnotationAlphaProvidedIPAddr] = nodeIP.String()
-			}
-
-			// If --cloud-provider=external and node address is already set,
-			// then we return early because provider set addresses should take precedence.
-			// Otherwise, we try to look up the node IP and let the cloud provider override it later
-			// This should alleviate a lot of the bootstrapping issues with out-of-tree providers
-			if len(node.Status.Addresses) > 0 {
-				return nil
-			}
-		}
-		if cloud != nil {
-			cloudNodeAddresses, err := nodeAddressesFunc()
-			if err != nil {
-				return err
-			}
-
-			var nodeAddresses []v1.NodeAddress
-
-			// For every address supplied by the cloud provider that matches nodeIP, nodeIP is the enforced node address for
-			// that address Type (like InternalIP and ExternalIP), meaning other addresses of the same Type are discarded.
-			// See #61921 for more information: some cloud providers may supply secondary IPs, so nodeIP serves as a way to
-			// ensure that the correct IPs show up on a Node object.
-			if nodeIPSpecified {
-				enforcedNodeAddresses := []v1.NodeAddress{}
-
-				nodeIPTypes := make(map[v1.NodeAddressType]bool)
-				for _, nodeAddress := range cloudNodeAddresses {
-					if nodeAddress.Address == nodeIP.String() {
-						enforcedNodeAddresses = append(enforcedNodeAddresses, v1.NodeAddress{Type: nodeAddress.Type, Address: nodeAddress.Address})
-						nodeIPTypes[nodeAddress.Type] = true
-					}
-				}
-
-				// nodeIP must be among the addresses supplied by the cloud provider
-				if len(enforcedNodeAddresses) == 0 {
-					return fmt.Errorf("failed to get node address from cloud provider that matches ip: %v", nodeIP)
-				}
-
-				// nodeIP was found, now use all other addresses supplied by the cloud provider NOT of the same Type as nodeIP.
-				for _, nodeAddress := range cloudNodeAddresses {
-					if !nodeIPTypes[nodeAddress.Type] {
-						enforcedNodeAddresses = append(enforcedNodeAddresses, v1.NodeAddress{Type: nodeAddress.Type, Address: nodeAddress.Address})
-					}
-				}
-
-				nodeAddresses = enforcedNodeAddresses
-			} else if nodeIP != nil {
-				// nodeIP is "0.0.0.0" or "::"; sort cloudNodeAddresses to
-				// prefer addresses of the matching family
-				sortedAddresses := make([]v1.NodeAddress, 0, len(cloudNodeAddresses))
-				for _, nodeAddress := range cloudNodeAddresses {
-					ip := net.ParseIP(nodeAddress.Address)
-					if ip == nil || isPreferredIPFamily(ip) {
-						sortedAddresses = append(sortedAddresses, nodeAddress)
-					}
-				}
-				for _, nodeAddress := range cloudNodeAddresses {
-					ip := net.ParseIP(nodeAddress.Address)
-					if ip != nil && !isPreferredIPFamily(ip) {
-						sortedAddresses = append(sortedAddresses, nodeAddress)
-					}
-				}
-				nodeAddresses = sortedAddresses
-			} else {
-				// If nodeIP is unset, just use the addresses provided by the cloud provider as-is
-				nodeAddresses = cloudNodeAddresses
-			}
-
-			switch {
-			case len(cloudNodeAddresses) == 0:
-				// the cloud provider didn't specify any addresses
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeHostName, Address: hostname})
-
-			case !hasAddressType(cloudNodeAddresses, v1.NodeHostName) && hasAddressValue(cloudNodeAddresses, hostname):
-				// the cloud provider didn't specify an address of type Hostname,
-				// but the auto-detected hostname matched an address reported by the cloud provider,
-				// so we can add it and count on the value being verifiable via cloud provider metadata
-				nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeHostName, Address: hostname})
-
-			case hostnameOverridden:
-				// the hostname was force-set via flag/config.
-				// this means the hostname might not be able to be validated via cloud provider metadata,
-				// but was a choice by the kubelet deployer we should honor
-				var existingHostnameAddress *v1.NodeAddress
-				for i := range nodeAddresses {
-					if nodeAddresses[i].Type == v1.NodeHostName {
-						existingHostnameAddress = &nodeAddresses[i]
-						break
-					}
-				}
-
-				if existingHostnameAddress == nil {
-					// no existing Hostname address found, add it
-					klog.InfoS("Adding overridden hostname to cloudprovider-reported addresses", "hostname", hostname)
-					nodeAddresses = append(nodeAddresses, v1.NodeAddress{Type: v1.NodeHostName, Address: hostname})
-				} else if existingHostnameAddress.Address != hostname {
-					// override the Hostname address reported by the cloud provider
-					klog.InfoS("Replacing cloudprovider-reported hostname with overridden hostname", "cloudProviderHostname", existingHostnameAddress.Address, "overriddenHostname", hostname)
-					existingHostnameAddress.Address = hostname
-				}
-			}
-			node.Status.Addresses = nodeAddresses
-		} else if nodeIPSpecified && secondaryNodeIPSpecified {
+		if nodeIPSpecified && secondaryNodeIPSpecified {
 			node.Status.Addresses = []v1.NodeAddress{
 				{Type: v1.NodeInternalIP, Address: nodeIP.String()},
 				{Type: v1.NodeInternalIP, Address: secondaryNodeIP.String()},
