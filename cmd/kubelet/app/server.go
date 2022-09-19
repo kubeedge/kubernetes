@@ -22,7 +22,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"os"
 	"path"
@@ -43,19 +42,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	utilnet "k8s.io/apimachinery/pkg/util/net"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/wait"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 	certutil "k8s.io/client-go/util/cert"
-	"k8s.io/client-go/util/certificate"
 	"k8s.io/client-go/util/connrotation"
 	"k8s.io/client-go/util/keyutil"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -63,7 +58,6 @@ import (
 	"k8s.io/component-base/featuregate"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics"
-	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/version"
 	"k8s.io/component-base/version/verflag"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
@@ -77,8 +71,6 @@ import (
 	kubeletscheme "k8s.io/kubernetes/pkg/kubelet/apis/config/scheme"
 	kubeletconfigvalidation "k8s.io/kubernetes/pkg/kubelet/apis/config/validation"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
-	kubeletcertificate "k8s.io/kubernetes/pkg/kubelet/certificate"
-	"k8s.io/kubernetes/pkg/kubelet/certificate/bootstrap"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
@@ -87,7 +79,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/eviction"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	"k8s.io/kubernetes/pkg/kubelet/kubeletconfig/configfiles"
-	kubeletmetrics "k8s.io/kubernetes/pkg/kubelet/metrics"
 	"k8s.io/kubernetes/pkg/kubelet/server"
 	"k8s.io/kubernetes/pkg/kubelet/stats/pidlimit"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
@@ -554,7 +545,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		kubeDeps.EventClient = nil
 		kubeDeps.HeartbeatClient = nil
 		klog.InfoS("Standalone mode, no API client")
-		
+
 	case kubeDeps.KubeClient == nil, kubeDeps.HeartbeatClient == nil:
 		clientConfig, onHeartbeatFailure, err := buildKubeletClientConfig(ctx, s, nodeName)
 		if err != nil {
@@ -775,121 +766,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 // buildKubeletClientConfig constructs the appropriate client config for the kubelet depending on whether
 // bootstrapping is enabled or client certificate rotation is enabled.
 func buildKubeletClientConfig(ctx context.Context, s *options.KubeletServer, nodeName types.NodeName) (*restclient.Config, func(), error) {
-	if s.RotateCertificates {
-		// Rules for client rotation and the handling of kube config files:
-		//
-		// 1. If the client provides only a kubeconfig file, we must use that as the initial client
-		//    kubeadm needs the initial data in the kubeconfig to be placed into the cert store
-		// 2. If the client provides only an initial bootstrap kubeconfig file, we must create a
-		//    kubeconfig file at the target location that points to the cert store, but until
-		//    the file is present the client config will have no certs
-		// 3. If the client provides both and the kubeconfig is valid, we must ignore the bootstrap
-		//    kubeconfig.
-		// 4. If the client provides both and the kubeconfig is expired or otherwise invalid, we must
-		//    replace the kubeconfig with a new file that points to the cert dir
-		//
-		// The desired configuration for bootstrapping is to use a bootstrap kubeconfig and to have
-		// the kubeconfig file be managed by this process. For backwards compatibility with kubeadm,
-		// which provides a high powered kubeconfig on the master with cert/key data, we must
-		// bootstrap the cert manager with the contents of the initial client config.
-
-		klog.InfoS("Client rotation is on, will bootstrap in background")
-		certConfig, clientConfig, err := bootstrap.LoadClientConfig(s.KubeConfig, s.BootstrapKubeconfig, s.CertDirectory)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		// use the correct content type for cert rotation, but don't set QPS
-		setContentTypeForClient(certConfig, s.ContentType)
-
-		kubeClientConfigOverrides(s, clientConfig)
-
-		clientCertificateManager, err := buildClientCertificateManager(certConfig, clientConfig, s.CertDirectory, nodeName)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		legacyregistry.RawMustRegister(metrics.NewGaugeFunc(
-			metrics.GaugeOpts{
-				Subsystem: kubeletmetrics.KubeletSubsystem,
-				Name:      "certificate_manager_client_ttl_seconds",
-				Help: "Gauge of the TTL (time-to-live) of the Kubelet's client certificate. " +
-					"The value is in seconds until certificate expiry (negative if already expired). " +
-					"If client certificate is invalid or unused, the value will be +INF.",
-				StabilityLevel: metrics.ALPHA,
-			},
-			func() float64 {
-				if c := clientCertificateManager.Current(); c != nil && c.Leaf != nil {
-					return math.Trunc(time.Until(c.Leaf.NotAfter).Seconds())
-				}
-				return math.Inf(1)
-			},
-		))
-
-		// the rotating transport will use the cert from the cert manager instead of these files
-		transportConfig := restclient.AnonymousClientConfig(clientConfig)
-
-		// we set exitAfter to five minutes because we use this client configuration to request new certs - if we are unable
-		// to request new certs, we will be unable to continue normal operation. Exiting the process allows a wrapper
-		// or the bootstrapping credentials to potentially lay down new initial config.
-		closeAllConns, err := kubeletcertificate.UpdateTransport(wait.NeverStop, transportConfig, clientCertificateManager, 5*time.Minute)
-		if err != nil {
-			return nil, nil, err
-		}
-		var onHeartbeatFailure func()
-		// Kubelet needs to be able to recover from stale http connections.
-		// HTTP2 has a mechanism to detect broken connections by sending periodical pings.
-		// HTTP1 only can have one persistent connection, and it will close all Idle connections
-		// once the Kubelet heartbeat fails. However, since there are many edge cases that we can't
-		// control, users can still opt-in to the previous behavior for closing the connections by
-		// setting the environment variable DISABLE_HTTP2.
-		if s := os.Getenv("DISABLE_HTTP2"); len(s) > 0 {
-			klog.InfoS("HTTP2 has been explicitly disabled, Kubelet will forcefully close active connections on heartbeat failures")
-			onHeartbeatFailure = closeAllConns
-		} else {
-			onHeartbeatFailure = func() { utilnet.CloseIdleConnectionsFor(transportConfig.Transport) }
-		}
-
-		klog.V(2).InfoS("Starting client certificate rotation")
-		clientCertificateManager.Start()
-
-		return transportConfig, onHeartbeatFailure, nil
-	}
-
-	if len(s.BootstrapKubeconfig) > 0 {
-		if err := bootstrap.LoadClientCert(ctx, s.KubeConfig, s.BootstrapKubeconfig, s.CertDirectory, nodeName); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	clientConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: s.KubeConfig},
-		&clientcmd.ConfigOverrides{},
-	).ClientConfig()
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid kubeconfig: %w", err)
-	}
-
-	kubeClientConfigOverrides(s, clientConfig)
-	// Kubelet needs to be able to recover from stale http connections.
-	// HTTP2 has a mechanism to detect broken connections by sending periodical pings.
-	// HTTP1 only can have one persistent connection, and it will close all Idle connections
-	// once the Kubelet heartbeat fails. However, since there are many edge cases that we can't
-	// control, users can still opt-in to the previous behavior for closing the connections by
-	// setting the environment variable DISABLE_HTTP2.
-	var onHeartbeatFailure func()
-	if s := os.Getenv("DISABLE_HTTP2"); len(s) > 0 {
-		klog.InfoS("HTTP2 has been explicitly disabled, updating Kubelet client Dialer to forcefully close active connections on heartbeat failures")
-		onHeartbeatFailure, err = updateDialer(clientConfig)
-		if err != nil {
-			return nil, nil, err
-		}
-	} else {
-		onHeartbeatFailure = func() {
-			utilnet.CloseIdleConnectionsFor(clientConfig.Transport)
-		}
-	}
-	return clientConfig, onHeartbeatFailure, nil
+	return nil, nil, nil
 }
 
 // updateDialer instruments a restconfig with a dial. the returned function allows forcefully closing all active connections.
@@ -900,38 +777,6 @@ func updateDialer(clientConfig *restclient.Config) (func(), error) {
 	d := connrotation.NewDialer((&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext)
 	clientConfig.Dial = d.DialContext
 	return d.CloseAll, nil
-}
-
-// buildClientCertificateManager creates a certificate manager that will use certConfig to request a client certificate
-// if no certificate is available, or the most recent clientConfig (which is assumed to point to the cert that the manager will
-// write out).
-func buildClientCertificateManager(certConfig, clientConfig *restclient.Config, certDir string, nodeName types.NodeName) (certificate.Manager, error) {
-	newClientsetFn := func(current *tls.Certificate) (clientset.Interface, error) {
-		// If we have a valid certificate, use that to fetch CSRs. Otherwise use the bootstrap
-		// credentials. In the future it would be desirable to change the behavior of bootstrap
-		// to always fall back to the external bootstrap credentials when such credentials are
-		// provided by a fundamental trust system like cloud VM identity or an HSM module.
-		config := certConfig
-		if current != nil {
-			config = clientConfig
-		}
-		return clientset.NewForConfig(config)
-	}
-
-	return kubeletcertificate.NewKubeletClientCertificateManager(
-		certDir,
-		nodeName,
-
-		// this preserves backwards compatibility with kubeadm which passes
-		// a high powered certificate to the kubelet as --kubeconfig and expects
-		// it to be rotated out immediately
-		clientConfig.CertData,
-		clientConfig.KeyData,
-
-		clientConfig.CertFile,
-		clientConfig.KeyFile,
-		newClientsetFn,
-	)
 }
 
 func kubeClientConfigOverrides(s *options.KubeletServer, clientConfig *restclient.Config) {
