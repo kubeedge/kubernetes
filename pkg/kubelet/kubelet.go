@@ -451,27 +451,9 @@ func NewMainKubelet(ctx context.Context,
 	var nodeHasSynced cache.InformerSynced
 	var nodeInformer coreinformersv1.NodeInformer
 	var nodeLister corelisters.NodeLister
-
-	// If kubeClient == nil, we are running in standalone mode (i.e. no API servers)
-	// If not nil, we are running as part of a cluster and should sync w/API
-	if kubeDeps.KubeClient != nil {
-		kubeInformers := informers.NewSharedInformerFactoryWithOptions(kubeDeps.KubeClient, 0, informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.FieldSelector = fields.Set{metav1.ObjectNameField: string(nodeName)}.String()
-		}))
-		nodeInformer = kubeInformers.Core().V1().Nodes()
-		nodeLister = nodeInformer.Lister()
-		nodeHasSynced = func() bool {
-			return kubeInformers.Core().V1().Nodes().Informer().HasSynced()
-		}
-		kubeInformers.Start(wait.NeverStop)
-		klog.InfoS("Attempting to sync node with API server")
-	} else {
-		// we don't have a client to sync!
-		nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-		nodeLister = corelisters.NewNodeLister(nodeIndexer)
-		nodeHasSynced = func() bool { return true }
-		klog.InfoS("Kubelet is running in standalone mode, will skip API server sync")
-	}
+	nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	nodeLister = corelisters.NewNodeLister(nodeIndexer)
+	nodeHasSynced = func() bool { return true }
 
 	if kubeDeps.PodConfig == nil {
 		var err error
@@ -928,6 +910,7 @@ func NewMainKubelet(ctx context.Context,
 				options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", string(nodeName)).String()
 			}),
 		)
+		nodeInformer = kubeInformers.Core().V1().Nodes()
 		podCertificateManager := podcertificate.NewIssuingManager(
 			kubeDeps.KubeClient,
 			klet.podManager,

@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
 	cloudproviderapi "k8s.io/cloud-provider/api"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 )
@@ -289,11 +290,10 @@ func Test_getLastObservedNodeAddresses(t *testing.T) {
 			defer testKubelet.Cleanup()
 			kl := testKubelet.kubelet
 			kl.nodeName = types.NodeName(tc.nodeName)
-			nodeLister := testNodeLister{}
+			kl.kubeClient = fake.NewSimpleClientset()
 			if tc.node != nil {
-				nodeLister.nodes = append(nodeLister.nodes, tc.node)
+				kl.kubeClient = fake.NewSimpleClientset(tc.node)
 			}
-			kl.nodeLister = nodeLister
 			addrs := kl.getLastObservedNodeAddresses()
 
 			if len(addrs) != len(tc.expectedAddrs) {

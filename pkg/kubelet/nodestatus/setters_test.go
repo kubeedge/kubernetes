@@ -277,6 +277,7 @@ func TestNodeAddress(t *testing.T) {
 			shouldError: false,
 		},
 	}
+
 	for _, testCase := range cases {
 		if testCase.cloudProvider || testCase.existingAnnotations != nil || testCase.expectedAnnotations != nil {
 			continue
@@ -1226,7 +1227,7 @@ func TestReadyCondition(t *testing.T) {
 		{
 			desc:             "new, ready",
 			node:             withCapacity.DeepCopy(),
-			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "kubelet is posting ready status", now, now)},
+			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "edge is posting ready status", now, now)},
 			// TODO(mtaufen): The current behavior is that we don't send an event for the initial NodeReady condition,
 			// the reason for this is unclear, so we may want to actually send an event, and change these test cases
 			// to ensure an event is sent.
@@ -1237,7 +1238,7 @@ func TestReadyCondition(t *testing.T) {
 			cmStatus: cm.Status{
 				SoftRequirements: fmt.Errorf("foo"),
 			},
-			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "kubelet is posting ready status. WARNING: foo", now, now)},
+			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "edge is posting ready status. WARNING: foo", now, now)},
 		},
 		{
 			desc:             "new, not ready: storage errors",
@@ -1267,7 +1268,7 @@ func TestReadyCondition(t *testing.T) {
 			desc:                                 "new, ready: localStorageCapacityIsolation is not supported",
 			node:                                 withoutStorageCapacity.DeepCopy(),
 			disableLocalStorageCapacityIsolation: true,
-			expectConditions:                     []v1.NodeCondition{*makeReadyCondition(true, "kubelet is posting ready status", now, now)},
+			expectConditions:                     []v1.NodeCondition{*makeReadyCondition(true, "edge is posting ready status", now, now)},
 		},
 		// the transition tests ensure timestamps are set correctly, no need to test the entire condition matrix in this section
 		{
@@ -1277,7 +1278,7 @@ func TestReadyCondition(t *testing.T) {
 				node.Status.Conditions = []v1.NodeCondition{*makeReadyCondition(false, "", before, before)}
 				return node
 			}(),
-			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "kubelet is posting ready status", now, now)},
+			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "edge is posting ready status", now, now)},
 			expectEvents: []testEvent{
 				{
 					eventType: v1.EventTypeNormal,
@@ -1308,7 +1309,7 @@ func TestReadyCondition(t *testing.T) {
 				node.Status.Conditions = []v1.NodeCondition{*makeReadyCondition(true, "", before, before)}
 				return node
 			}(),
-			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "kubelet is posting ready status", before, now)},
+			expectConditions: []v1.NodeCondition{*makeReadyCondition(true, "edge is posting ready status", before, now)},
 			expectEvents:     []testEvent{},
 		},
 		{
@@ -1883,7 +1884,7 @@ func makeReadyCondition(ready bool, message string, transition, heartbeat time.T
 		return &v1.NodeCondition{
 			Type:               v1.NodeReady,
 			Status:             v1.ConditionTrue,
-			Reason:             "KubeletReady",
+			Reason:             "EdgeReady",
 			Message:            message,
 			LastTransitionTime: metav1.NewTime(transition),
 			LastHeartbeatTime:  metav1.NewTime(heartbeat),

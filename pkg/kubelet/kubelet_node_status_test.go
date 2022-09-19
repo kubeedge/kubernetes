@@ -280,8 +280,8 @@ func TestUpdateNewNodeStatus(t *testing.T) {
 						{
 							Type:               v1.NodeReady,
 							Status:             v1.ConditionTrue,
-							Reason:             "KubeletReady",
-							Message:            "kubelet is posting ready status",
+							Reason:             "EdgeReady",
+							Message:            "edge is posting ready status",
 							LastHeartbeatTime:  metav1.Time{},
 							LastTransitionTime: metav1.Time{},
 						},
@@ -399,8 +399,8 @@ func TestUpdateExistingNodeStatus(t *testing.T) {
 				{
 					Type:               v1.NodeReady,
 					Status:             v1.ConditionTrue,
-					Reason:             "KubeletReady",
-					Message:            fmt.Sprintf("kubelet is posting ready status"),
+					Reason:             "EdgeReady",
+					Message:            fmt.Sprintf("edge is posting ready status"),
 					LastHeartbeatTime:  metav1.Date(2012, 1, 1, 0, 0, 0, 0, time.UTC),
 					LastTransitionTime: metav1.Date(2012, 1, 1, 0, 0, 0, 0, time.UTC),
 				},
@@ -460,8 +460,8 @@ func TestUpdateExistingNodeStatus(t *testing.T) {
 				{
 					Type:               v1.NodeReady,
 					Status:             v1.ConditionTrue,
-					Reason:             "KubeletReady",
-					Message:            fmt.Sprintf("kubelet is posting ready status"),
+					Reason:             "EdgeReady",
+					Message:            fmt.Sprintf("edge is posting ready status"),
 					LastHeartbeatTime:  metav1.Time{}, // placeholder
 					LastTransitionTime: metav1.Time{}, // placeholder
 				},
@@ -756,7 +756,7 @@ func TestUpdateNodeStatusWithRuntimeStateError(t *testing.T) {
 	// Should report kubelet ready if the runtime check is updated
 	clock.SetTime(time.Now())
 	kubelet.updateRuntimeUp()
-	checkNodeStatus(v1.ConditionTrue, "KubeletReady")
+	checkNodeStatus(v1.ConditionTrue, "EdgeReady")
 
 	// Should report kubelet not ready if the runtime check is out of date
 	clock.SetTime(time.Now().Add(-maxWaitForContainerRuntime))
@@ -801,7 +801,7 @@ func TestUpdateNodeStatusWithRuntimeStateError(t *testing.T) {
 		},
 	}
 	kubelet.updateRuntimeUp()
-	checkNodeStatus(v1.ConditionTrue, "KubeletReady")
+	checkNodeStatus(v1.ConditionTrue, "EdgeReady")
 
 	// Should report node not ready if NetworkReady is false.
 	fakeRuntime.RuntimeStatus = &kubecontainer.RuntimeStatus{
@@ -900,8 +900,8 @@ func TestUpdateNodeStatusWithLease(t *testing.T) {
 				{
 					Type:               v1.NodeReady,
 					Status:             v1.ConditionTrue,
-					Reason:             "KubeletReady",
-					Message:            fmt.Sprintf("kubelet is posting ready status"),
+					Reason:             "EdgeReady",
+					Message:            fmt.Sprintf("edge is posting ready status"),
 					LastHeartbeatTime:  now,
 					LastTransitionTime: now,
 				},
