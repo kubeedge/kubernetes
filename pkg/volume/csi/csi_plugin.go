@@ -992,6 +992,11 @@ func (p *csiPlugin) podInfoEnabled(driverName string) (bool, error) {
 	return true, nil
 }
 
+// NewController returns a csi controller instance
+func NewController() *Controller {
+	return &Controller{}
+}
+
 func unregisterDriver(driverName string) error {
 	csiDrivers.Delete(driverName)
 
