@@ -96,6 +96,11 @@ type csiClient interface {
 	NodeSupportsVolumeStats(ctx context.Context) (bool, error)
 	NodeSupportsSingleNodeMultiWriterAccessMode(ctx context.Context) (bool, error)
 	NodeSupportsVolumeMountGroup(ctx context.Context) (bool, error)
+	CreateVolume(ctx context.Context, req *csipbv1.CreateVolumeRequest) (*csipbv1.CreateVolumeResponse, error)
+	DeleteVolume(ctx context.Context, req *csipbv1.DeleteVolumeRequest) (*csipbv1.DeleteVolumeResponse, error)
+	ControllerPublishVolume(ctx context.Context, req *csipbv1.ControllerPublishVolumeRequest) (*csipbv1.ControllerPublishVolumeResponse, error)
+	ControllerUnpublishVolume(ctx context.Context, req *csipbv1.ControllerUnpublishVolumeRequest) (*csipbv1.ControllerUnpublishVolumeResponse, error)
+	ControllerGetCapabilities(ctx context.Context, req *csipbv1.ControllerGetCapabilitiesRequest) (*csipbv1.ControllerGetCapabilitiesResponse, error)
 }
 
 // Strongly typed address
@@ -106,10 +111,11 @@ type csiDriverName string
 
 // csiClient encapsulates all csi-plugin methods
 type csiDriverClient struct {
-	driverName          csiDriverName
-	addr                csiAddr
-	metricsManager      *MetricsManager
-	nodeV1ClientCreator nodeV1ClientCreator
+	driverName                csiDriverName
+	addr                      csiAddr
+	metricsManager            *MetricsManager
+	nodeV1ClientCreator       nodeV1ClientCreator
+	controllerV1ClientCreator controllerV1ClientCreator
 }
 
 type csiResizeOptions struct {
@@ -134,7 +140,24 @@ type nodeV1ClientCreator func(addr csiAddr, metricsManager *MetricsManager) (
 	err error,
 )
 
+type controllerV1ClientCreator func(addr csiAddr, metricsManager *MetricsManager) (
+	controllerClient csipbv1.ControllerClient,
+	closer io.Closer,
+	err error,
+)
+
 type nodeV1AccessModeMapper func(am api.PersistentVolumeAccessMode) csipbv1.VolumeCapability_AccessMode_Mode
+
+func newV1ControllerClient(addr csiAddr, metricsManager *MetricsManager) (controllerClient csipbv1.ControllerClient, closer io.Closer, err error) {
+	var conn *grpc.ClientConn
+	conn, err = newGrpcConn(addr, metricsManager)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	controllerClient = csipbv1.NewControllerClient(conn)
+	return controllerClient, conn, nil
+}
 
 // newV1NodeClient creates a new NodeClient with the internally used gRPC
 // connection set up. It also returns a closer which must to be called to close
@@ -163,11 +186,13 @@ func newCsiDriverClient(driverName csiDriverName) (*csiDriverClient, error) {
 	}
 
 	nodeV1ClientCreator := newV1NodeClient
+	controllerV1ClientCreator := newV1ControllerClient
 	return &csiDriverClient{
-		driverName:          driverName,
-		addr:                csiAddr(existingDriver.endpoint),
-		nodeV1ClientCreator: nodeV1ClientCreator,
-		metricsManager:      NewCSIMetricsManager(string(driverName)),
+		driverName:                driverName,
+		addr:                      csiAddr(existingDriver.endpoint),
+		nodeV1ClientCreator:       nodeV1ClientCreator,
+		metricsManager:            NewCSIMetricsManager(string(driverName)),
+		controllerV1ClientCreator: controllerV1ClientCreator,
 	}, nil
 }
 
@@ -703,6 +728,57 @@ func (c *csiDriverClient) nodeGetCapabilities(ctx context.Context) ([]*csipbv1.N
 	}
 	return resp.GetCapabilities(), nil
 }
+
+func (c *csiDriverClient) CreateVolume(ctx context.Context, req *csipbv1.CreateVolumeRequest) (*csipbv1.CreateVolumeResponse, error) {
+	controllerClient, closer, err := c.controllerV1ClientCreator(c.addr, c.metricsManager)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	return controllerClient.CreateVolume(ctx, req)
+}
+
+func (c *csiDriverClient) DeleteVolume(ctx context.Context, req *csipbv1.DeleteVolumeRequest) (*csipbv1.DeleteVolumeResponse, error) {
+	controllerClient, closer, err := c.controllerV1ClientCreator(c.addr, c.metricsManager)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	return controllerClient.DeleteVolume(ctx, req)
+}
+
+func (c *csiDriverClient) ControllerPublishVolume(ctx context.Context, req *csipbv1.ControllerPublishVolumeRequest) (*csipbv1.ControllerPublishVolumeResponse, error) {
+	controllerClient, closer, err := c.controllerV1ClientCreator(c.addr, c.metricsManager)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	return controllerClient.ControllerPublishVolume(ctx, req)
+}
+
+func (c *csiDriverClient) ControllerUnpublishVolume(ctx context.Context, req *csipbv1.ControllerUnpublishVolumeRequest) (*csipbv1.ControllerUnpublishVolumeResponse, error) {
+	controllerClient, closer, err := c.controllerV1ClientCreator(c.addr, c.metricsManager)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	return controllerClient.ControllerUnpublishVolume(ctx, req)
+}
+
+func (c *csiDriverClient) ControllerGetCapabilities(ctx context.Context, req *csipbv1.ControllerGetCapabilitiesRequest) (*csipbv1.ControllerGetCapabilitiesResponse, error) {
+	controllerClient, closer, err := c.controllerV1ClientCreator(c.addr, c.metricsManager)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	return controllerClient.ControllerGetCapabilities(ctx, req)
+}
+
 
 func isFinalError(err error) bool {
 	// Sources:
