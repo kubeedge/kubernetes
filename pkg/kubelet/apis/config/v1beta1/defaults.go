@@ -215,7 +215,7 @@ func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfigura
 		obj.MaxOpenFiles = 1000000
 	}
 	if obj.ContentType == "" {
-		obj.ContentType = "application/vnd.kubernetes.protobuf"
+		obj.ContentType = "application/json"
 	}
 	if obj.KubeAPIQPS == nil {
 		obj.KubeAPIQPS = ptr.To[int32](50)
