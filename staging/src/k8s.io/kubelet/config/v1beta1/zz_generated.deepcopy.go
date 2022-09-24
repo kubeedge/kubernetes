@@ -116,7 +116,7 @@ func (in *KubeletConfiguration) DeepCopyInto(out *KubeletConfiguration) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	in.Authentication.DeepCopyInto(&out.Authentication)
+	in.Authentication.DeepCopyInto(out.Authentication)
 	out.Authorization = in.Authorization
 	if in.RegistryPullQPS != nil {
 		in, out := &in.RegistryPullQPS, &out.RegistryPullQPS
