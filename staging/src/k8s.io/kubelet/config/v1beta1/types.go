@@ -114,6 +114,7 @@ type KubeletConfiguration struct {
 	EnableServer *bool `json:"enableServer,omitempty"`
 	// staticPodPath is the path to the directory containing local (static) pods to
 	// run, or the path to a single static pod file.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	StaticPodPath string `json:"staticPodPath,omitempty"`
@@ -138,10 +139,12 @@ type KubeletConfiguration struct {
 	// +optional
 	HTTPCheckFrequency metav1.Duration `json:"httpCheckFrequency,omitempty"`
 	// staticPodURL is the URL for accessing static pods to run.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	StaticPodURL string `json:"staticPodURL,omitempty"`
 	// staticPodURLHeader is a map of slices with HTTP headers to use when accessing the podURL.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: nil
 	// +optional
 	StaticPodURLHeader map[string][]string `json:"staticPodURLHeader,omitempty"`
@@ -167,27 +170,32 @@ type KubeletConfiguration struct {
 	// tlsPrivateKeyFile are not provided, a self-signed certificate
 	// and key are generated for the public address and saved to the directory
 	// passed to the Kubelet's --cert-dir flag.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	TLSCertFile string `json:"tlsCertFile,omitempty"`
 	// tlsPrivateKeyFile is the file containing x509 private key matching tlsCertFile.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	TLSPrivateKeyFile string `json:"tlsPrivateKeyFile,omitempty"`
 	// tlsCipherSuites is the list of allowed cipher suites for the server.
 	// Note that TLS 1.3 ciphersuites are not configurable.
 	// Values are from tls package constants (https://golang.org/pkg/crypto/tls/#pkg-constants).
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: nil
 	// +optional
 	TLSCipherSuites []string `json:"tlsCipherSuites,omitempty"`
 	// tlsMinVersion is the minimum TLS version supported.
 	// Values are from tls package constants (https://golang.org/pkg/crypto/tls/#pkg-constants).
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	TLSMinVersion string `json:"tlsMinVersion,omitempty"`
 	// rotateCertificates enables client certificate rotation. The Kubelet will request a
 	// new certificate from the certificates.k8s.io API. This requires an approver to approve the
 	// certificate signing requests.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: false
 	// +optional
 	RotateCertificates bool `json:"rotateCertificates,omitempty"`
@@ -196,10 +204,12 @@ type KubeletConfiguration struct {
 	// the 'certificates.k8s.io' API. This requires an approver to approve the
 	// certificate signing requests (CSR). The RotateKubeletServerCertificate feature
 	// must be enabled when setting this field.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: false
 	// +optional
 	ServerTLSBootstrap bool `json:"serverTLSBootstrap,omitempty"`
 	// authentication specifies how requests to the Kubelet's server are authenticated.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Defaults:
 	//   anonymous:
 	//     enabled: false
@@ -207,15 +217,16 @@ type KubeletConfiguration struct {
 	//     enabled: true
 	//     cacheTTL: "2m"
 	// +optional
-	Authentication KubeletAuthentication `json:"authentication"`
+	Authentication *KubeletAuthentication `json:"authentication,omitempty"`
 	// authorization specifies how requests to the Kubelet's server are authorized.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Defaults:
 	//   mode: Webhook
 	//   webhook:
 	//     cacheAuthorizedTTL: "5m"
 	//     cacheUnauthorizedTTL: "30s"
 	// +optional
-	Authorization KubeletAuthorization `json:"authorization"`
+	Authorization *KubeletAuthorization `json:"authorization,omitempty"`
 	// registryPullQPS is the limit of registry pulls per second.
 	// The value must not be a negative number.
 	// Setting it to 0 means no limit.
@@ -254,6 +265,7 @@ type KubeletConfiguration struct {
 	// eventRecordQPS is the maximum event creations per second. If 0, there
 	// is no limit enforced. The value cannot be a negative number.
 	// Default: 50
+	// NOTE: DEPRECATED BY KubeEdge
 	// +optional
 	EventRecordQPS *int32 `json:"eventRecordQPS,omitempty"`
 	// eventBurst is the maximum size of a burst of event creations, temporarily
@@ -261,6 +273,7 @@ type KubeletConfiguration struct {
 	// eventRecordQPS. This field canot be a negative number and it is only used
 	// when eventRecordQPS > 0.
 	// Default: 100
+	// NOTE: DEPRECATED BY KubeEdge
 	// +optional
 	EventBurst int32 `json:"eventBurst,omitempty"`
 	// enableDebuggingHandlers enables server endpoints for log access
@@ -275,10 +288,12 @@ type KubeletConfiguration struct {
 	EnableContentionProfiling bool `json:"enableContentionProfiling,omitempty"`
 	// healthzPort is the port of the localhost healthz endpoint (set to 0 to disable).
 	// A valid number is between 1 and 65535.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: 10248
 	// +optional
 	HealthzPort *int32 `json:"healthzPort,omitempty"`
 	// healthzBindAddress is the IP address for the healthz server to serve on.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: "127.0.0.1"
 	// +optional
 	HealthzBindAddress string `json:"healthzBindAddress,omitempty"`
@@ -496,6 +511,7 @@ type KubeletConfiguration struct {
 	ResolverConfig *string `json:"resolvConf,omitempty"`
 	// runOnce causes the Kubelet to check the API server once for pods,
 	// run those in addition to the pods specified by static pod files, and exit.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: false
 	// +optional
 	RunOnce bool `json:"runOnce,omitempty"`
@@ -522,7 +538,7 @@ type KubeletConfiguration struct {
 	// +optional
 	MaxOpenFiles int64 `json:"maxOpenFiles,omitempty"`
 	// contentType is contentType of requests sent to apiserver.
-	// Default: "application/vnd.kubernetes.protobuf"
+	// Default: "application/json"
 	// +optional
 	ContentType string `json:"contentType,omitempty"`
 	// kubeAPIQPS is the QPS to use while talking with kubernetes apiserver.
@@ -640,7 +656,7 @@ type KubeletConfiguration struct {
 	// +optional
 	FeatureGates map[string]bool `json:"featureGates,omitempty"`
 	// failSwapOn tells the Kubelet to fail to start if swap is enabled on the node.
-	// Default: true
+	// Default: false
 	// +optional
 	FailSwapOn *bool `json:"failSwapOn,omitempty"`
 	// memorySwap configures swap memory available to container workloads.
@@ -754,6 +770,7 @@ type KubeletConfiguration struct {
 	VolumePluginDir string `json:"volumePluginDir,omitempty"`
 	// providerID, if set, sets the unique ID of the instance that an external
 	// provider (i.e. cloudprovider) can use to identify a specific node.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	ProviderID string `json:"providerID,omitempty"`
