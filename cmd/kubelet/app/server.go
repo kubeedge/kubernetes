@@ -658,15 +658,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		}
 	}
 
-	if kubeDeps.Auth == nil {
-		auth, runAuthenticatorCAReload, err := BuildAuth(nodeName, kubeDeps.KubeClient, s.KubeletConfiguration)
-		if err != nil {
-			return err
-		}
-		kubeDeps.Auth = auth
-		runAuthenticatorCAReload(ctx.Done())
-	}
-
 	if err := kubelet.PreInitRuntimeService(&s.KubeletConfiguration, kubeDeps); err != nil {
 		return err
 	}
