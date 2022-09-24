@@ -101,6 +101,7 @@ type KubeletConfiguration struct {
 	// dynamically updating this field, consider that
 	// the set of static pods specified at the new path may be different than the
 	// ones the Kubelet initially started with, and this may disrupt your node.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	StaticPodPath string `json:"staticPodPath,omitempty"`
@@ -136,6 +137,7 @@ type KubeletConfiguration struct {
 	// dynamically updating this field, consider that
 	// the set of static pods specified at the new URL may be different than the
 	// ones the Kubelet initially started with, and this may disrupt your node.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	StaticPodURL string `json:"staticPodURL,omitempty"`
@@ -143,6 +145,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt the ability to read the latest set of static pods from StaticPodURL.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: nil
 	// +optional
 	StaticPodURLHeader map[string][]string `json:"staticPodURLHeader,omitempty"`
@@ -180,6 +183,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that interact with the Kubelet server.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	TLSCertFile string `json:"tlsCertFile,omitempty"`
@@ -187,6 +191,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that interact with the Kubelet server.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	TLSPrivateKeyFile string `json:"tlsPrivateKeyFile,omitempty"`
@@ -195,6 +200,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that interact with the Kubelet server.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: nil
 	// +optional
 	TLSCipherSuites []string `json:"tlsCipherSuites,omitempty"`
@@ -203,6 +209,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that interact with the Kubelet server.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	TLSMinVersion string `json:"tlsMinVersion,omitempty"`
@@ -213,6 +220,7 @@ type KubeletConfiguration struct {
 	// dynamically updating this field, consider that
 	// disabling it may disrupt the Kubelet's ability to authenticate with the API server
 	// after the current certificate expires.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: false
 	// +optional
 	RotateCertificates bool `json:"rotateCertificates,omitempty"`
@@ -226,6 +234,7 @@ type KubeletConfiguration struct {
 	// disabling it will stop the renewal of Kubelet server certificates, which can
 	// disrupt components that interact with the Kubelet server in the long term,
 	// due to certificate expiration.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: false
 	// +optional
 	ServerTLSBootstrap bool `json:"serverTLSBootstrap,omitempty"`
@@ -233,6 +242,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that interact with the Kubelet server.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Defaults:
 	//   anonymous:
 	//     enabled: false
@@ -240,18 +250,19 @@ type KubeletConfiguration struct {
 	//     enabled: true
 	//     cacheTTL: "2m"
 	// +optional
-	Authentication KubeletAuthentication `json:"authentication"`
+	Authentication *KubeletAuthentication `json:"authentication,omitempty"`
 	// authorization specifies how requests to the Kubelet's server are authorized.
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that interact with the Kubelet server.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Defaults:
 	//   mode: Webhook
 	//   webhook:
 	//     cacheAuthorizedTTL: "5m"
 	//     cacheUnauthorizedTTL: "30s"
 	// +optional
-	Authorization KubeletAuthorization `json:"authorization"`
+	Authorization *KubeletAuthorization `json:"authorization,omitempty"`
 	// registryPullQPS is the limit of registry pulls per second.
 	// The value must not be a negative number.
 	// Setting it to 0 means no limit.
@@ -279,7 +290,8 @@ type KubeletConfiguration struct {
 	// dynamically updating this field, consider that
 	// it may impact scalability by changing the amount of traffic produced by
 	// event creations.
-	// Default: 5
+	// NOTE: DEPRECATED BY KubeEdge
+	// Default: 0
 	// +optional
 	EventRecordQPS *int32 `json:"eventRecordQPS,omitempty"`
 	// eventBurst is the maximum size of a burst of event creations, temporarily
@@ -290,7 +302,8 @@ type KubeletConfiguration struct {
 	// dynamically updating this field, consider that
 	// it may impact scalability by changing the amount of traffic produced by
 	// event creations.
-	// Default: 10
+	// NOTE: DEPRECATED BY KubeEdge
+	// Default: 0
 	// +optional
 	EventBurst int32 `json:"eventBurst,omitempty"`
 	// enableDebuggingHandlers enables server endpoints for log access
@@ -314,6 +327,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that monitor Kubelet health.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: 10248
 	// +optional
 	HealthzPort *int32 `json:"healthzPort,omitempty"`
@@ -321,6 +335,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may disrupt components that monitor Kubelet health.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: "127.0.0.1"
 	// +optional
 	HealthzBindAddress string `json:"healthzBindAddress,omitempty"`
@@ -604,6 +619,7 @@ type KubeletConfiguration struct {
 	ResolverConfig string `json:"resolvConf,omitempty"`
 	// runOnce causes the Kubelet to check the API server once for pods,
 	// run those in addition to the pods specified by static pod files, and exit.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: false
 	// +optional
 	RunOnce bool `json:"runOnce,omitempty"`
@@ -648,7 +664,7 @@ type KubeletConfiguration struct {
 	// it may impact the ability for the Kubelet to communicate with the API server.
 	// If the Kubelet loses contact with the API server due to a change to this field,
 	// the change cannot be reverted via dynamic Kubelet config.
-	// Default: "application/vnd.kubernetes.protobuf"
+	// Default: "application/json"
 	// +optional
 	ContentType string `json:"contentType,omitempty"`
 	// kubeAPIQPS is the QPS to use while talking with kubernetes apiserver.
@@ -820,7 +836,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// setting it to true will cause the Kubelet to crash-loop if swap is enabled.
-	// Default: true
+	// Default: false
 	// +optional
 	FailSwapOn *bool `json:"failSwapOn,omitempty"`
 	// memorySwap configures swap memory available to container workloads.
@@ -952,6 +968,7 @@ type KubeletConfiguration struct {
 	// If DynamicKubeletConfig (deprecated; default off) is on, when
 	// dynamically updating this field, consider that
 	// it may impact the ability of the Kubelet to interact with cloud providers.
+	// NOTE: DEPRECATED BY KubeEdge
 	// Default: ""
 	// +optional
 	ProviderID string `json:"providerID,omitempty"`
