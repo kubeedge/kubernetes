@@ -881,8 +881,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CPUCFSQuotaPeriod:                              {Default: false, PreRelease: featuregate.Alpha},
 	TopologyManager:                                {Default: true, PreRelease: featuregate.Beta},
 	StorageObjectInUseProtection:                   {Default: true, PreRelease: featuregate.GA, LockToDefault: true}, // remove in 1.25
-	CSIMigration:                                   {Default: true, PreRelease: featuregate.Beta},
-	CSIMigrationGCE:                                {Default: true, PreRelease: featuregate.Beta}, // On by default in 1.23 (requires GCE PD CSI Driver)
+	CSIMigration:                                   {Default: false, PreRelease: featuregate.Beta},
+	CSIMigrationGCE:                                {Default: false, PreRelease: featuregate.Beta}, // On by default in 1.23 (requires GCE PD CSI Driver)
 	InTreePluginGCEUnregister:                      {Default: false, PreRelease: featuregate.Alpha},
 	CSIMigrationAWS:                                {Default: true, PreRelease: featuregate.Beta},
 	InTreePluginAWSUnregister:                      {Default: false, PreRelease: featuregate.Alpha},
