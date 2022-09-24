@@ -89,24 +89,6 @@ func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfigura
 	if obj.Port == 0 {
 		obj.Port = ports.KubeletPort
 	}
-	if obj.Authentication.Anonymous.Enabled == nil {
-		obj.Authentication.Anonymous.Enabled = ptr.To(false)
-	}
-	if obj.Authentication.Webhook.Enabled == nil {
-		obj.Authentication.Webhook.Enabled = ptr.To(true)
-	}
-	if obj.Authentication.Webhook.CacheTTL == zeroDuration {
-		obj.Authentication.Webhook.CacheTTL = metav1.Duration{Duration: 2 * time.Minute}
-	}
-	if obj.Authorization.Mode == "" {
-		obj.Authorization.Mode = kubeletconfigv1beta1.KubeletAuthorizationModeWebhook
-	}
-	if obj.Authorization.Webhook.CacheAuthorizedTTL == zeroDuration {
-		obj.Authorization.Webhook.CacheAuthorizedTTL = metav1.Duration{Duration: 5 * time.Minute}
-	}
-	if obj.Authorization.Webhook.CacheUnauthorizedTTL == zeroDuration {
-		obj.Authorization.Webhook.CacheUnauthorizedTTL = metav1.Duration{Duration: 30 * time.Second}
-	}
 	if obj.RegistryPullQPS == nil {
 		obj.RegistryPullQPS = ptr.To[int32](5)
 	}
@@ -215,7 +197,7 @@ func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfigura
 		obj.MaxOpenFiles = 1000000
 	}
 	if obj.ContentType == "" {
-		obj.ContentType = "application/vnd.kubernetes.protobuf"
+		obj.ContentType = "application/json"
 	}
 	if obj.KubeAPIQPS == nil {
 		obj.KubeAPIQPS = ptr.To[int32](50)
