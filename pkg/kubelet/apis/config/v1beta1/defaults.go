@@ -27,7 +27,6 @@ import (
 	// TODO: Cut references to k8s.io/kubernetes, eventually there should be none from this package
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	logsapi "k8s.io/component-base/logs/api/v1"
-	"k8s.io/kubernetes/pkg/cluster/ports"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/qos"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
@@ -71,9 +70,6 @@ func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfigura
 		panic(fmt.Sprintf("failed to merge global and in-flight KubeletConfiguration while setting defaults, error: %v", err))
 	}
 
-	if obj.EnableServer == nil {
-		obj.EnableServer = ptr.To(true)
-	}
 	if obj.SyncFrequency == zeroDuration {
 		obj.SyncFrequency = metav1.Duration{Duration: 1 * time.Minute}
 	}
@@ -85,9 +81,6 @@ func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfigura
 	}
 	if obj.Address == "" {
 		obj.Address = "0.0.0.0"
-	}
-	if obj.Port == 0 {
-		obj.Port = ports.KubeletPort
 	}
 	if obj.RegistryPullQPS == nil {
 		obj.RegistryPullQPS = ptr.To[int32](5)

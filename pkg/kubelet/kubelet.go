@@ -287,7 +287,7 @@ type Bootstrap interface {
 	BirthCry()
 	StartGarbageCollection()
 	ListenAndServe(kubeCfg *kubeletconfiginternal.KubeletConfiguration, tlsOptions *server.TLSOptions, auth server.AuthInterface, tp trace.TracerProvider)
-	ListenAndServeReadOnly(address net.IP, port uint, tp trace.TracerProvider)
+	ListenAndServeReadOnly(kubeCfg *kubeletconfiginternal.KubeletConfiguration, tp trace.TracerProvider)
 	ListenAndServePodResources(ctx context.Context)
 	Run(<-chan kubetypes.PodUpdate)
 }
@@ -422,7 +422,7 @@ func NewMainKubelet(ctx context.Context,
 	}
 
 	daemonEndpoints := &v1.NodeDaemonEndpoints{
-		KubeletEndpoint: v1.DaemonEndpoint{Port: kubeCfg.Port},
+		KubeletEndpoint: v1.DaemonEndpoint{Port: kubeCfg.ReadOnlyPort},
 	}
 
 	imageGCPolicy := images.ImageGCPolicy{
@@ -2929,8 +2929,8 @@ func (kl *Kubelet) ListenAndServe(kubeCfg *kubeletconfiginternal.KubeletConfigur
 }
 
 // ListenAndServeReadOnly runs the kubelet HTTP server in read-only mode.
-func (kl *Kubelet) ListenAndServeReadOnly(address net.IP, port uint, tp trace.TracerProvider) {
-	server.ListenAndServeKubeletReadOnlyServer(kl, kl.resourceAnalyzer, kl.containerManager.GetHealthCheckers(), kl.flagz, address, port, tp)
+func (kl *Kubelet) ListenAndServeReadOnly(kubeCfg *kubeletconfiginternal.KubeletConfiguration, tp trace.TracerProvider) {
+	server.ListenAndServeKubeletReadOnlyServer(kl, kl.resourceAnalyzer, kl.containerManager.GetHealthCheckers(), kl.flagz, kubeCfg, tp)
 }
 
 type kubeletPodsProvider struct {
