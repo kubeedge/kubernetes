@@ -211,11 +211,12 @@ func ListenAndServeKubeletReadOnlyServer(
 	resourceAnalyzer stats.ResourceAnalyzer,
 	checkers []healthz.HealthChecker,
 	flagz flagz.Reader,
-	address net.IP,
-	port uint,
+	kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	tp oteltrace.TracerProvider) {
+	address := netutils.ParseIPSloppy(kubeCfg.Address)
+	port := uint(kubeCfg.ReadOnlyPort)
 	klog.InfoS("Starting to listen read-only", "address", address, "port", port)
-	s := NewServer(host, resourceAnalyzer, checkers, nil, nil, nil)
+	s := NewServer(host, resourceAnalyzer, checkers, flagz, nil, kubeCfg)
 	s.InstallTracingFilter(tp, otelrestful.WithPublicEndpoint())
 
 	server := &http.Server{

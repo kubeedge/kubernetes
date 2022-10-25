@@ -361,6 +361,7 @@ func (kl *Kubelet) initialNode(ctx context.Context) (*v1.Node, error) {
 	}
 
 	kl.setNodeStatus(ctx, node)
+	node.Status.DaemonEndpoints = *kl.daemonEndpoints
 
 	return node, nil
 }
