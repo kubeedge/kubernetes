@@ -106,7 +106,6 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/subpath"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/exec"
-	netutils "k8s.io/utils/net"
 )
 
 func init() {
@@ -1052,11 +1051,8 @@ func startKubelet(k kubelet.Bootstrap, podCfg *config.PodConfig, kubeCfg *kubele
 	go k.Run(podCfg.Updates())
 
 	// start the kubelet server
-	if enableServer {
-		go k.ListenAndServe(kubeCfg, kubeDeps.TLSOptions, kubeDeps.Auth, kubeDeps.TracerProvider)
-	}
 	if kubeCfg.ReadOnlyPort > 0 {
-		go k.ListenAndServeReadOnly(netutils.ParseIPSloppy(kubeCfg.Address), uint(kubeCfg.ReadOnlyPort), kubeDeps.TracerProvider)
+		go k.ListenAndServeReadOnly(kubeCfg, kubeDeps.TracerProvider)
 	}
 }
 
