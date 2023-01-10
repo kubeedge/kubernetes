@@ -19,7 +19,6 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,9 +60,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/client-go/util/connrotation"
-	"k8s.io/client-go/util/keyutil"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/configz"
 	"k8s.io/component-base/featuregate"
@@ -93,7 +90,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/eviction"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	"k8s.io/kubernetes/pkg/kubelet/kubeletconfig/configfiles"
-	"k8s.io/kubernetes/pkg/kubelet/server"
 	"k8s.io/kubernetes/pkg/kubelet/stats/pidlimit"
 	kubeletutil "k8s.io/kubernetes/pkg/kubelet/util"
 	utilfs "k8s.io/kubernetes/pkg/util/filesystem"
@@ -104,7 +100,6 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util/subpath"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/exec"
-	netutils "k8s.io/utils/net"
 )
 
 func init() {
@@ -430,12 +425,6 @@ func loadDropinConfigFileIntoJSON(name string) ([]byte, error) {
 // UnsecuredDependencies returns a Dependencies suitable for being run, or an error if the server setup
 // is not valid.  It will not start any background processes, and does not include authentication/authorization
 func UnsecuredDependencies(s *options.KubeletServer, featureGate featuregate.FeatureGate) (*kubelet.Dependencies, error) {
-	// Initialize the TLS Options
-	tlsOptions, err := InitializeTLS(&s.KubeletFlags, &s.KubeletConfiguration)
-	if err != nil {
-		return nil, err
-	}
-
 	mounter := mount.New(s.ExperimentalMounterPath)
 	subpather := subpath.New(mounter)
 	hu := hostutil.NewHostUtil()
@@ -467,7 +456,7 @@ func UnsecuredDependencies(s *options.KubeletServer, featureGate featuregate.Fea
 		OSInterface:         kubecontainer.RealOS{},
 		VolumePlugins:       plugins,
 		DynamicPluginProber: GetDynamicPluginProber(s.VolumePluginDir, pluginRunner),
-		TLSOptions:          tlsOptions}, nil
+		TLSOptions:          nil}, nil
 }
 
 // Run runs the specified KubeletServer with the given Dependencies. This should never exit.
@@ -871,89 +860,6 @@ func kubeClientConfigOverrides(s *options.KubeletServer, clientConfig *restclien
 // if cloud provider is specified. Otherwise, returns the hostname of the node.
 func getNodeName(hostname string) (types.NodeName, error) {
 	return types.NodeName(hostname), nil
-}
-
-// InitializeTLS checks for a configured TLSCertFile and TLSPrivateKeyFile: if unspecified a new self-signed
-// certificate and key file are generated. Returns a configured server.TLSOptions object.
-func InitializeTLS(kf *options.KubeletFlags, kc *kubeletconfiginternal.KubeletConfiguration) (*server.TLSOptions, error) {
-	if !kc.ServerTLSBootstrap && kc.TLSCertFile == "" && kc.TLSPrivateKeyFile == "" {
-		kc.TLSCertFile = filepath.Join(kf.CertDirectory, "kubelet.crt")
-		kc.TLSPrivateKeyFile = filepath.Join(kf.CertDirectory, "kubelet.key")
-
-		canReadCertAndKey, err := certutil.CanReadCertAndKey(kc.TLSCertFile, kc.TLSPrivateKeyFile)
-		if err != nil {
-			return nil, err
-		}
-		if !canReadCertAndKey {
-			hostName, err := nodeutil.GetHostname(kf.HostnameOverride)
-			if err != nil {
-				return nil, err
-			}
-			cert, key, err := certutil.GenerateSelfSignedCertKey(hostName, nil, nil)
-			if err != nil {
-				return nil, fmt.Errorf("unable to generate self signed cert: %w", err)
-			}
-
-			if err := certutil.WriteCert(kc.TLSCertFile, cert); err != nil {
-				return nil, err
-			}
-
-			if err := keyutil.WriteKey(kc.TLSPrivateKeyFile, key); err != nil {
-				return nil, err
-			}
-
-			klog.V(4).InfoS("Using self-signed cert", "TLSCertFile", kc.TLSCertFile, "TLSPrivateKeyFile", kc.TLSPrivateKeyFile)
-		}
-	}
-
-	tlsCipherSuites, err := cliflag.TLSCipherSuites(kc.TLSCipherSuites)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(tlsCipherSuites) > 0 {
-		insecureCiphers := cliflag.InsecureTLSCiphers()
-		for i := 0; i < len(tlsCipherSuites); i++ {
-			for cipherName, cipherID := range insecureCiphers {
-				if tlsCipherSuites[i] == cipherID {
-					klog.InfoS("Use of insecure cipher detected.", "cipher", cipherName)
-				}
-			}
-		}
-	}
-
-	minTLSVersion, err := cliflag.TLSVersion(kc.TLSMinVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	if minTLSVersion == tls.VersionTLS13 {
-		if len(tlsCipherSuites) != 0 {
-			klog.InfoS("Warning: TLS 1.3 cipher suites are not configurable, ignoring --tls-cipher-suites")
-		}
-	}
-
-	tlsOptions := &server.TLSOptions{
-		Config: &tls.Config{
-			MinVersion:   minTLSVersion,
-			CipherSuites: tlsCipherSuites,
-		},
-		CertFile: kc.TLSCertFile,
-		KeyFile:  kc.TLSPrivateKeyFile,
-	}
-
-	if len(kc.Authentication.X509.ClientCAFile) > 0 {
-		clientCAs, err := certutil.NewPool(kc.Authentication.X509.ClientCAFile)
-		if err != nil {
-			return nil, fmt.Errorf("unable to load client CA file %s: %w", kc.Authentication.X509.ClientCAFile, err)
-		}
-		// Specify allowed CAs for client certificates
-		tlsOptions.Config.ClientCAs = clientCAs
-		// Populate PeerCertificates in requests, but don't reject connections without verified certificates
-		tlsOptions.Config.ClientAuth = tls.RequestClientCert
-	}
-
-	return tlsOptions, nil
 }
 
 // setContentTypeForClient sets the appropriate content type into the rest config
