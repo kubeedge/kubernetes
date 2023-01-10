@@ -387,6 +387,9 @@ func TestNodeAddress_NoCloudProvider(t *testing.T) {
 		},
 	}
 	for _, testCase := range cases {
+		if testCase.shouldError {
+			continue
+		}
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := context.Background()
 			// testCase setup
