@@ -48,7 +48,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -84,7 +83,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/stats/pidlimit"
 	kubeletutil "k8s.io/kubernetes/pkg/kubelet/util"
 	utilfs "k8s.io/kubernetes/pkg/util/filesystem"
-	"k8s.io/kubernetes/pkg/util/flock"
 	nodeutil "k8s.io/kubernetes/pkg/util/node"
 	"k8s.io/kubernetes/pkg/util/oom"
 	"k8s.io/kubernetes/pkg/util/rlimit"
@@ -179,24 +177,6 @@ is checked every 20 seconds (also configurable with a flag).`,
 
 			if cleanFlagSet.Changed("pod-infra-container-image") {
 				klog.InfoS("--pod-infra-container-image will not be pruned by the image garbage collector in kubelet and should also be set in the remote runtime")
-			}
-
-			// load kubelet config file, if provided
-			if configFile := kubeletFlags.KubeletConfigFile; len(configFile) > 0 {
-				kubeletConfig, err = loadConfigFile(configFile)
-				if err != nil {
-					return fmt.Errorf("failed to load kubelet config file, error: %w, path: %s", err, configFile)
-				}
-				// We must enforce flag precedence by re-parsing the command line into the new object.
-				// This is necessary to preserve backwards-compatibility across binary upgrades.
-				// See issue #56171 for more details.
-				if err := kubeletConfigFlagPrecedence(kubeletConfig, args); err != nil {
-					return fmt.Errorf("failed to precedence kubeletConfigFlag: %w", err)
-				}
-				// update feature gates based on new config
-				if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(kubeletConfig.FeatureGates); err != nil {
-					return fmt.Errorf("failed to set feature gates from initial flags-based config: %w", err)
-				}
 			}
 
 			// Config and flags parsed, now we can initialize logging.
@@ -478,23 +458,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 		!isCgroup2UnifiedMode() {
 		klog.InfoS("Warning: MemoryQoS feature only works with cgroups v2 on Linux, but enabled with cgroups v1")
 	}
-	// Obtain Kubelet Lock File
-	if s.ExitOnLockContention && s.LockFilePath == "" {
-		return errors.New("cannot exit on lock file contention: no lock file specified")
-	}
-	done := make(chan struct{})
-	if s.LockFilePath != "" {
-		klog.InfoS("Acquiring file lock", "path", s.LockFilePath)
-		if err := flock.Acquire(s.LockFilePath); err != nil {
-			return fmt.Errorf("unable to acquire file lock on %q: %w", s.LockFilePath, err)
-		}
-		if s.ExitOnLockContention {
-			klog.InfoS("Watching for inotify events", "path", s.LockFilePath)
-			if err := watchForLockfileContention(s.LockFilePath, done); err != nil {
-				return err
-			}
-		}
-	}
 
 	// Register current configuration with /configz endpoint
 	err = initConfigz(&s.KubeletConfiguration)
@@ -504,12 +467,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 
 	if len(s.ShowHiddenMetricsForVersion) > 0 {
 		metrics.SetShowHidden()
-	}
-
-	// About to get clients and such, detect standaloneMode
-	standaloneMode := true
-	if len(s.KubeConfig) > 0 {
-		standaloneMode = false
 	}
 
 	if kubeDeps == nil {
@@ -527,46 +484,7 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 	if err != nil {
 		return err
 	}
-
-	// if in standalone mode, indicate as much by setting all clients to nil
-	switch {
-	case standaloneMode:
-		kubeDeps.KubeClient = nil
-		kubeDeps.EventClient = nil
-		kubeDeps.HeartbeatClient = nil
-		klog.InfoS("Standalone mode, no API client")
-
-	case kubeDeps.KubeClient == nil, kubeDeps.HeartbeatClient == nil:
-		clientConfig, onHeartbeatFailure, err := buildKubeletClientConfig(ctx, s, kubeDeps.TracerProvider, nodeName)
-		if err != nil {
-			return err
-		}
-		if onHeartbeatFailure == nil {
-			return errors.New("onHeartbeatFailure must be a valid function other than nil")
-		}
-		kubeDeps.OnHeartbeatFailure = onHeartbeatFailure
-
-		kubeDeps.KubeClient, err = clientset.NewForConfig(clientConfig)
-		if err != nil {
-			return fmt.Errorf("failed to initialize kubelet client: %w", err)
-		}
-
-		// make a separate client for heartbeat with throttling disabled and a timeout attached
-		heartbeatClientConfig := *clientConfig
-		heartbeatClientConfig.Timeout = s.KubeletConfiguration.NodeStatusUpdateFrequency.Duration
-		// The timeout is the minimum of the lease duration and status update frequency
-		leaseTimeout := time.Duration(s.KubeletConfiguration.NodeLeaseDurationSeconds) * time.Second
-		if heartbeatClientConfig.Timeout > leaseTimeout {
-			heartbeatClientConfig.Timeout = leaseTimeout
-		}
-
-		heartbeatClientConfig.QPS = float32(-1)
-		kubeDeps.HeartbeatClient, err = clientset.NewForConfig(&heartbeatClientConfig)
-		if err != nil {
-			return fmt.Errorf("failed to initialize kubelet heartbeat client: %w", err)
-		}
-	}
-
+	
 	var cgroupRoots []string
 	nodeAllocatableRoot := cm.NodeAllocatableRoot(s.CgroupRoot, s.CgroupsPerQOS, s.CgroupDriver)
 	cgroupRoots = append(cgroupRoots, nodeAllocatableRoot)
@@ -736,8 +654,6 @@ func run(ctx context.Context, s *options.KubeletServer, kubeDeps *kubelet.Depend
 	go daemon.SdNotify(false, "READY=1")
 
 	select {
-	case <-done:
-		break
 	case <-ctx.Done():
 		break
 	}
