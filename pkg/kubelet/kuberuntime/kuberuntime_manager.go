@@ -47,7 +47,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/credentialprovider"
-	"k8s.io/kubernetes/pkg/credentialprovider/plugin"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
@@ -267,13 +266,7 @@ func NewKubeGenericRuntimeManager(
 			klog.ErrorS(err, "Failed to create pod log directory", "path", podLogsRootDirectory)
 		}
 	}
-
-	if imageCredentialProviderConfigFile != "" || imageCredentialProviderBinDir != "" {
-		if err := plugin.RegisterCredentialProviderPlugins(imageCredentialProviderConfigFile, imageCredentialProviderBinDir); err != nil {
-			klog.ErrorS(err, "Failed to register CRI auth plugins")
-			os.Exit(1)
-		}
-	}
+	
 	kubeRuntimeManager.keyring = credentialprovider.NewDockerKeyring()
 
 	kubeRuntimeManager.imagePuller = images.NewImageManager(
