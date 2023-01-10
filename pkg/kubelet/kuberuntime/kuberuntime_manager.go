@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -50,7 +49,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/credentialprovider"
-	"k8s.io/kubernetes/pkg/credentialprovider/plugin"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/allocation"
 	kubeletconfiginternal "k8s.io/kubernetes/pkg/kubelet/apis/config"
@@ -302,13 +300,6 @@ func NewKubeGenericRuntimeManager(
 		"containerRuntime", typedVersion.RuntimeName,
 		"version", typedVersion.RuntimeVersion,
 		"apiVersion", typedVersion.RuntimeApiVersion)
-
-	if imageCredentialProviderConfigPath != "" || imageCredentialProviderBinDir != "" {
-		if err := plugin.RegisterCredentialProviderPlugins(imageCredentialProviderConfigPath, imageCredentialProviderBinDir, tokenManager.GetServiceAccountToken, getServiceAccount); err != nil {
-			logger.Error(err, "Failed to register CRI auth plugins")
-			os.Exit(1)
-		}
-	}
 
 	var imageGCHooks []images.PostImageGCHook
 	var imagePullManager imagepullmanager.ImagePullManager = &imagepullmanager.NoopImagePullManager{}
