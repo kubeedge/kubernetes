@@ -608,7 +608,7 @@ func (m *manager) rotateCerts(ctx context.Context) (bool, error) {
 
 	// Wait for the certificate to be signed. This interface and internal timout
 	// is a remainder after the old design using raw watch wrapped with backoff.
-	crtPEM, err := csr.WaitForCertificate(ctx, clientSet, reqName, reqUID)
+	crtPEM, err := csr.WaitForCertificateForEdge(ctx, clientSet, reqName, reqUID)
 	if err != nil {
 		utilruntime.HandleErrorWithContext(ctx, err, "Certificate request was not signed")
 		if m.certificateRenewFailure != nil {
