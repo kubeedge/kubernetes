@@ -941,6 +941,9 @@ func (kl *Kubelet) removeOrphanedPodStatuses(pods []*v1.Pod, mirrorPods []*v1.Po
 	for _, pod := range pods {
 		podUIDs[pod.UID] = true
 	}
+	for _, pod := range mirrorPods {
+		podUIDs[pod.UID] = true
+	}
 	kl.statusManager.RemoveOrphanedStatuses(podUIDs)
 }
 
@@ -1074,6 +1077,10 @@ func (kl *Kubelet) HandlePodCleanups() error {
 		klog.ErrorS(err, "Failed cleaning up orphaned pod directories")
 	}
 
+	// Remove any orphaned mirror pods (mirror pods are tracked by name via the
+	// pod worker)
+	klog.V(3).InfoS("Clean up orphaned mirror pods")
+	kl.deleteOrphanedMirrorPods()
 	// Remove any cgroups in the hierarchy for pods that are definitely no longer
 	// running (not in the container runtime).
 	if kl.cgroupsPerQOS {
@@ -1101,8 +1108,9 @@ func (kl *Kubelet) HandlePodCleanups() error {
 			continue
 		}
 		start := kl.clock.Now()
+		mirrorPod, _ := kl.podManager.GetMirrorPodByPod(pod)
 		klog.V(3).InfoS("Pod is restartable after termination due to UID reuse", "pod", klog.KObj(pod), "podUID", pod.UID)
-		kl.dispatchWork(pod, kubetypes.SyncPodCreate, nil, start)
+		kl.dispatchWork(pod, kubetypes.SyncPodCreate, mirrorPod, start)
 	}
 
 	return nil
@@ -1174,6 +1182,23 @@ func (kl *Kubelet) validateContainerLogStatus(podName string, podStatus *v1.PodS
 	return kubecontainer.ParseContainerID(cID), nil
 }
 
+// deleteOrphanedMirrorPods checks whether pod killer has done with orphaned mirror pod.
+// If pod killing is done, podManager.DeleteMirrorPod() is called to delete mirror pod
+// from the API server
+func (kl *Kubelet) deleteOrphanedMirrorPods() {
+	mirrorPods := kl.podManager.GetOrphanedMirrorPodNames()
+	for _, podFullname := range mirrorPods {
+		if !kl.podWorkers.IsPodForMirrorPodTerminatingByFullName(podFullname) {
+			_, err := kl.podManager.DeleteMirrorPod(podFullname, nil)
+			if err != nil {
+				klog.ErrorS(err, "Encountered error when deleting mirror pod", "podName", podFullname)
+			} else {
+				klog.V(3).InfoS("Deleted pod", "podName", podFullname)
+			}
+		}
+	}
+}
+
 // GetKubeletContainerLogs returns logs from the container
 // TODO: this method is returning logs of random container attempts, when it should be returning the most recent attempt
 // or all of them.
@@ -1192,6 +1217,9 @@ func (kl *Kubelet) GetKubeletContainerLogs(ctx context.Context, podFullName, con
 	}
 
 	podUID := pod.UID
+	if mirrorPod, ok := kl.podManager.GetMirrorPodByPod(pod); ok {
+		podUID = mirrorPod.UID
+	}
 	podStatus, found := kl.statusManager.GetPodStatus(podUID)
 	if !found {
 		// If there is no cached status, use the status from the

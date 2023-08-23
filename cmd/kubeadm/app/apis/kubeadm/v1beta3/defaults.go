@@ -45,7 +45,7 @@ const (
 	// (previously this defaulted to k8s.gcr.io)
 	DefaultImageRepository = "registry.k8s.io"
 	// DefaultManifestsDir defines default manifests directory
-	DefaultManifestsDir = "/etc/kubernetes/manifests"
+	DefaultManifestsDir = "/etc/kubeedge/manifests"
 	// DefaultClusterName defines the default cluster name
 	DefaultClusterName = "kubernetes"
 
