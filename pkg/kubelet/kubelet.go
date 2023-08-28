@@ -268,6 +268,16 @@ type Dependencies struct {
 	useLegacyCadvisorStats bool
 }
 
+// makePodSourceConfig creates a config.PodConfig from the given
+// KubeletConfiguration or returns an error.
+func makePodSourceConfig(cfg *config.PodConfig, kubeCfg *kubeletconfiginternal.KubeletConfiguration, kubeDeps *Dependencies, nodeName types.NodeName, nodeHasSynced func() bool) {
+	if kubeCfg.StaticPodPath != "" {
+		klog.InfoS("Adding static pod path", "path", kubeCfg.StaticPodPath)
+		ctx := context.TODO()
+		config.NewSourceFile(kubeCfg.StaticPodPath, nodeName, kubeCfg.FileCheckFrequency.Duration, cfg.Channel(ctx, kubetypes.FileSource))
+	}
+}
+
 // PreInitRuntimeService will init runtime service before RunKubelet.
 func PreInitRuntimeService(kubeCfg *kubeletconfiginternal.KubeletConfiguration, kubeDeps *Dependencies) error {
 	remoteImageEndpoint := kubeCfg.ImageServiceEndpoint
@@ -330,6 +340,12 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	nodeLister = corelisters.NewNodeLister(nodeIndexer)
 	nodeHasSynced = func() bool { return true }
+
+	if kubeDeps.PodConfig != nil {
+		makePodSourceConfig(kubeDeps.PodConfig, kubeCfg, kubeDeps, nodeName, nodeHasSynced)
+	} else {
+		return nil, fmt.Errorf("KubeDeps.Podconfig is nil,static pod path list-watch failed")
+	}
 
 	containerGCPolicy := kubecontainer.GCPolicy{
 		MinAge:             minimumGCAge.Duration,
