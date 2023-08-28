@@ -143,7 +143,8 @@ func (mc *basicMirrorClient) DeleteMirrorPod(podFullName string, uid *types.UID)
 }
 
 func (mc *basicMirrorClient) getNodeUID() (types.UID, error) {
-	node, err := mc.nodeGetter.Get(mc.nodeName)
+	//node, err := mc.nodeGetter.Get(mc.nodeName)
+	node, err := mc.apiserverClient.CoreV1().Nodes().Get(context.Background(), mc.nodeName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
