@@ -69,6 +69,16 @@ type PodConfig struct {
 	// contains the list of all configured sources
 	sourcesLock sync.Mutex
 	sources     sets.String
+
+	podReady
+}
+
+// podReady holds the initPodReady flag and its lock
+type podReady struct {
+	// initPodReady is flag to check Pod ready status
+	initPodReady bool
+	// podReadyLock is used to guard initPodReady flag
+	podReadyLock sync.RWMutex
 }
 
 // NewPodConfig creates an object that can merge many configuration sources into a stream
@@ -97,23 +107,21 @@ func (c *PodConfig) Channel(ctx context.Context, source string) chan<- interface
 // SeenAllSources returns true if seenSources contains all sources in the
 // config, and also this config has received a SET message from each source.
 func (c *PodConfig) SeenAllSources(seenSources sets.String) bool {
-	if c.pods == nil {
-		return false
-	}
-	c.sourcesLock.Lock()
-	defer c.sourcesLock.Unlock()
-	klog.V(5).InfoS("Looking for sources, have seen", "sources", c.sources.List(), "seenSources", seenSources)
-	return seenSources.HasAll(c.sources.List()...) && c.pods.seenSources(c.sources.List()...)
+	c.podReadyLock.RLock()
+	defer c.podReadyLock.RUnlock()
+	return c.initPodReady
+}
+
+// setInitPodReady is used to safely set initPodReady flag
+func (c *PodConfig) SetInitPodReady(readyStatus bool) {
+	c.podReadyLock.Lock()
+	defer c.podReadyLock.Unlock()
+	c.initPodReady = readyStatus
 }
 
 // Updates returns a channel of updates to the configuration, properly denormalized.
 func (c *PodConfig) Updates() <-chan kubetypes.PodUpdate {
 	return c.updates
-}
-
-// Sync requests the full configuration be delivered to the update channel.
-func (c *PodConfig) Sync() {
-	c.pods.Sync()
 }
 
 // podStorage manages the current pod state at any point in time and ensures updates
@@ -192,22 +200,6 @@ func (s *podStorage) Merge(source string, change interface{}) error {
 			s.updates <- *reconciles
 		}
 
-	case PodConfigNotificationSnapshotAndUpdates:
-		if len(removes.Pods) > 0 || len(adds.Pods) > 0 || firstSet {
-			s.updates <- kubetypes.PodUpdate{Pods: s.MergedState().([]*v1.Pod), Op: kubetypes.SET, Source: source}
-		}
-		if len(updates.Pods) > 0 {
-			s.updates <- *updates
-		}
-		if len(deletes.Pods) > 0 {
-			s.updates <- *deletes
-		}
-
-	case PodConfigNotificationSnapshot:
-		if len(updates.Pods) > 0 || len(deletes.Pods) > 0 || len(adds.Pods) > 0 || len(removes.Pods) > 0 || firstSet {
-			s.updates <- kubetypes.PodUpdate{Pods: s.MergedState().([]*v1.Pod), Op: kubetypes.SET, Source: source}
-		}
-
 	case PodConfigNotificationUnknown:
 		fallthrough
 	default:
@@ -243,10 +235,6 @@ func (s *podStorage) merge(source string, change interface{}) (adds, updates, de
 				ref.Annotations = make(map[string]string)
 			}
 			ref.Annotations[kubetypes.ConfigSourceAnnotationKey] = source
-			// ignore static pods
-			if !kubetypes.IsStaticPod(ref) {
-				s.startupSLIObserver.ObservedPodOnWatch(ref, time.Now())
-			}
 			if existing, found := oldPods[ref.UID]; found {
 				pods[ref.UID] = existing
 				needUpdate, needReconcile, needGracefulDelete := checkAndUpdatePod(existing, ref)
@@ -323,12 +311,6 @@ func (s *podStorage) markSourceSet(source string) {
 	s.sourcesSeenLock.Lock()
 	defer s.sourcesSeenLock.Unlock()
 	s.sourcesSeen.Insert(source)
-}
-
-func (s *podStorage) seenSources(sources ...string) bool {
-	s.sourcesSeenLock.RLock()
-	defer s.sourcesSeenLock.RUnlock()
-	return s.sourcesSeen.HasAll(sources...)
 }
 
 func filterInvalidPods(pods []*v1.Pod, source string, recorder record.EventRecorder) (filtered []*v1.Pod) {
@@ -469,26 +451,6 @@ func checkAndUpdatePod(existing, ref *v1.Pod) (needUpdate, needReconcile, needGr
 	}
 
 	return
-}
-
-// Sync sends a copy of the current state through the update channel.
-func (s *podStorage) Sync() {
-	s.updateLock.Lock()
-	defer s.updateLock.Unlock()
-	s.updates <- kubetypes.PodUpdate{Pods: s.MergedState().([]*v1.Pod), Op: kubetypes.SET, Source: kubetypes.AllSource}
-}
-
-// Object implements config.Accessor
-func (s *podStorage) MergedState() interface{} {
-	s.podLock.RLock()
-	defer s.podLock.RUnlock()
-	pods := make([]*v1.Pod, 0)
-	for _, sourcePods := range s.pods {
-		for _, podRef := range sourcePods {
-			pods = append(pods, podRef.DeepCopy())
-		}
-	}
-	return pods
 }
 
 func copyPods(sourcePods []*v1.Pod) []*v1.Pod {
