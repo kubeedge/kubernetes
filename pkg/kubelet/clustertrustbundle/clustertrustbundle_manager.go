@@ -19,26 +19,19 @@ limitations under the License.
 package clustertrustbundle
 
 import (
-	"context"
 	"encoding/pem"
 	"fmt"
 	"math/rand"
-	"sync"
 	"time"
 
-	"github.com/go-logr/logr"
 	certificatesv1alpha1 "k8s.io/api/certificates/v1alpha1"
 	certificatesv1beta1 "k8s.io/api/certificates/v1beta1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	lrucache "k8s.io/apimachinery/pkg/util/cache"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -109,91 +102,6 @@ type InformerManager[T clusterTrustBundle] struct {
 }
 
 var _ Manager = (*InformerManager[certificatesv1beta1.ClusterTrustBundle])(nil)
-
-func NewAlphaInformerManager(
-	ctx context.Context, informerFactory informers.SharedInformerFactory, cacheSize int, cacheTTL time.Duration,
-) (Manager, error) {
-	bundlesInformer := informerFactory.Certificates().V1alpha1().ClusterTrustBundles()
-	return newInformerManager(
-		ctx, &alphaClusterTrustBundleHandlers{}, bundlesInformer.Informer(), bundlesInformer.Lister(), cacheSize, cacheTTL,
-	)
-}
-
-func NewBetaInformerManager(
-	ctx context.Context, informerFactory informers.SharedInformerFactory, cacheSize int, cacheTTL time.Duration,
-) (Manager, error) {
-	bundlesInformer := informerFactory.Certificates().V1beta1().ClusterTrustBundles()
-	return newInformerManager(
-		ctx, &betaClusterTrustBundleHandlers{}, bundlesInformer.Informer(), bundlesInformer.Lister(), cacheSize, cacheTTL,
-	)
-}
-
-// newInformerManager returns an initialized InformerManager.
-func newInformerManager[T clusterTrustBundle](ctx context.Context, handlers clusterTrustBundleHandlers[T], informer cache.SharedIndexInformer, lister clusterTrustBundlesLister[T], cacheSize int, cacheTTL time.Duration) (Manager, error) {
-	// We need to call Informer() before calling start on the shared informer
-	// factory, or the informer won't be registered to be started.
-	m := &InformerManager[T]{
-		ctbInformer:        informer,
-		ctbLister:          lister,
-		ctbHandlers:        handlers,
-		normalizationCache: lrucache.NewLRUExpireCache(cacheSize),
-		cacheTTL:           cacheTTL,
-	}
-
-	logger := klog.FromContext(ctx)
-	// Have the informer bust cache entries when it sees updates that could
-	// apply to them.
-	_, err := m.ctbInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			ctb, ok := obj.(*T)
-			if !ok {
-				return
-			}
-			logger.Info("Dropping all cache entries for signer", "signerName", m.ctbHandlers.GetSignerName(ctb))
-			m.dropCacheFor(ctb)
-		},
-		UpdateFunc: func(old, new any) {
-			ctb, ok := new.(*T)
-			if !ok {
-				return
-			}
-			logger.Info("Dropping cache for ClusterTrustBundle", "signerName", m.ctbHandlers.GetSignerName(ctb))
-			m.dropCacheFor(new.(*T))
-		},
-		DeleteFunc: func(obj any) {
-			ctb, ok := obj.(*T)
-			if !ok {
-				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-				if !ok {
-					return
-				}
-				ctb, ok = tombstone.Obj.(*T)
-				if !ok {
-					return
-				}
-			}
-			logger.Info("Dropping cache for ClusterTrustBundle", "signerName", m.ctbHandlers.GetSignerName(ctb))
-			m.dropCacheFor(ctb)
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("while registering event handler on informer: %w", err)
-	}
-
-	return m, nil
-}
-
-func (m *InformerManager[T]) dropCacheFor(ctb *T) {
-	if ctbSignerName := m.ctbHandlers.GetSignerName(ctb); ctbSignerName != "" {
-		m.normalizationCache.RemoveAll(func(key any) bool {
-			return key.(cacheKeyType).signerName == ctbSignerName
-		})
-	} else {
-		m.normalizationCache.RemoveAll(func(key any) bool {
-			return key.(cacheKeyType).ctbName == m.ctbHandlers.GetName(ctb)
-		})
-	}
-}
 
 // GetTrustAnchorsByName returns normalized and deduplicated trust anchors from
 // a single named ClusterTrustBundle.
@@ -331,134 +239,4 @@ func (m *NoopManager) GetTrustAnchorsByName(name string, allowMissing bool) ([]b
 // GetTrustAnchorsBySigner implements Manager.
 func (m *NoopManager) GetTrustAnchorsBySigner(signerName string, labelSelector *metav1.LabelSelector, allowMissing bool) ([]byte, error) {
 	return nil, fmt.Errorf("ClusterTrustBundle projection is not supported in static kubelet mode")
-}
-
-// LazyInformerManager decides whether to use the noop or the actual manager on a call to
-// the manager's methods.
-// We cannot determine this upon startup because some may rely on the kubelet to be fully
-// running in order to setup their kube-apiserver.
-type LazyInformerManager struct {
-	manager           Manager
-	managerLock       sync.RWMutex
-	client            clientset.Interface
-	cacheSize         int
-	contextWithLogger context.Context
-	logger            logr.Logger
-}
-
-func NewLazyInformerManager(ctx context.Context, kubeClient clientset.Interface, cacheSize int) Manager {
-	return &LazyInformerManager{
-		client:            kubeClient,
-		cacheSize:         cacheSize,
-		contextWithLogger: ctx,
-		logger:            klog.FromContext(ctx),
-		managerLock:       sync.RWMutex{},
-	}
-}
-
-func (m *LazyInformerManager) GetTrustAnchorsByName(name string, allowMissing bool) ([]byte, error) {
-	if err := m.ensureManagerSet(); err != nil {
-		return nil, fmt.Errorf("failed to ensure informer manager for ClusterTrustBundles: %w", err)
-	}
-	return m.manager.GetTrustAnchorsByName(name, allowMissing)
-}
-
-func (m *LazyInformerManager) GetTrustAnchorsBySigner(signerName string, labelSelector *metav1.LabelSelector, allowMissing bool) ([]byte, error) {
-	if err := m.ensureManagerSet(); err != nil {
-		return nil, fmt.Errorf("failed to ensure informer manager for ClusterTrustBundles: %w", err)
-	}
-	return m.manager.GetTrustAnchorsBySigner(signerName, labelSelector, allowMissing)
-}
-
-func (m *LazyInformerManager) isManagerSet() bool {
-	m.managerLock.RLock()
-	defer m.managerLock.RUnlock()
-	return m.manager != nil
-}
-
-type managerConstructor func(ctx context.Context, informerFactory informers.SharedInformerFactory, cacheSize int, cacheTTL time.Duration) (Manager, error)
-
-func (m *LazyInformerManager) ensureManagerSet() error {
-	if m.isManagerSet() {
-		return nil
-	}
-
-	m.managerLock.Lock()
-	defer m.managerLock.Unlock()
-	// we need to check again in case the manager was set between locking
-	if m.manager != nil {
-		return nil
-	}
-
-	managerSchema := map[schema.GroupVersion]managerConstructor{
-		certificatesv1alpha1.SchemeGroupVersion: NewAlphaInformerManager,
-		certificatesv1beta1.SchemeGroupVersion:  NewBetaInformerManager,
-	}
-
-	kubeInformers := informers.NewSharedInformerFactoryWithOptions(m.client, 0)
-
-	var clusterTrustBundleManager Manager
-	var foundGV string
-	for _, gv := range []schema.GroupVersion{certificatesv1beta1.SchemeGroupVersion, certificatesv1alpha1.SchemeGroupVersion} {
-		ctbAPIAvailable, err := clusterTrustBundlesAvailable(m.client, gv)
-		if err != nil {
-			return fmt.Errorf("failed to determine which informer manager to choose: %w", err)
-		}
-
-		if !ctbAPIAvailable {
-			continue
-		}
-
-		clusterTrustBundleManager, err = managerSchema[gv](m.contextWithLogger, kubeInformers, m.cacheSize, 5*time.Minute)
-		if err != nil {
-			return fmt.Errorf("error starting informer-based ClusterTrustBundle manager: %w", err)
-		}
-		foundGV = gv.String()
-		break
-	}
-
-	if clusterTrustBundleManager == nil {
-		m.manager = &NoopManager{}
-		m.logger.Info("No version of the ClusterTrustBundle API was found, the ClusterTrustBundle informer won't be started")
-		return nil
-	}
-
-	m.manager = clusterTrustBundleManager
-	kubeInformers.Start(m.contextWithLogger.Done())
-	m.logger.Info("Started ClusterTrustBundle informer", "apiGroup", foundGV)
-
-	// a cache fetch will likely follow right after, wait for the freshly started
-	// informers to sync
-	synced := true
-	timeoutContext, cancel := context.WithTimeout(m.contextWithLogger, 10*time.Second)
-	defer cancel()
-	m.logger.Info("Waiting for ClusterTrustBundle informer to sync")
-	for _, ok := range kubeInformers.WaitForCacheSync(timeoutContext.Done()) {
-		synced = synced && ok
-	}
-	if synced {
-		m.logger.Info("ClusterTrustBundle informer synced")
-	} else {
-		m.logger.Info("ClusterTrustBundle informer not synced, continuing to attempt in background")
-	}
-
-	return nil
-}
-
-func clusterTrustBundlesAvailable(client clientset.Interface, gv schema.GroupVersion) (bool, error) {
-	resList, err := client.Discovery().ServerResourcesForGroupVersion(gv.String())
-	if k8serrors.IsNotFound(err) {
-		return false, nil
-	}
-
-	if resList != nil {
-		// even in case of an error above there might be a partial list for APIs that
-		// were already successfully discovered
-		for _, r := range resList.APIResources {
-			if r.Name == "clustertrustbundles" {
-				return true, nil
-			}
-		}
-	}
-	return false, err
 }
