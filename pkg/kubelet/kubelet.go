@@ -837,13 +837,8 @@ func NewMainKubelet(ctx context.Context,
 			kubeDeps.Recorder)
 	}
 
-	var clusterTrustBundleManager clustertrustbundle.Manager = &clustertrustbundle.NoopManager{}
-	if kubeDeps.KubeClient != nil && utilfeature.DefaultFeatureGate.Enabled(features.ClusterTrustBundleProjection) {
-		clusterTrustBundleManager = clustertrustbundle.NewLazyInformerManager(ctx, kubeDeps.KubeClient, 2*int(kubeCfg.MaxPods))
-		klog.InfoS("ClusterTrustBundle informer will be started eventually once a trust bundle is requested")
-	} else {
-		klog.InfoS("Not starting ClusterTrustBundle informer because we are in static kubelet mode or the ClusterTrustBundleProjection featuregate is disabled")
-	}
+	clusterTrustBundleManager := &clustertrustbundle.NoopManager{}
+	klog.InfoS("Not starting ClusterTrustBundle informer because it is disabled in KubeEdge")
 
 	if kubeDeps.KubeClient != nil && utilfeature.DefaultFeatureGate.Enabled(features.PodCertificateRequest) {
 		kubeInformers := informers.NewSharedInformerFactoryWithOptions(
