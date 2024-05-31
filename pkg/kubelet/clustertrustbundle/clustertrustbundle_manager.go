@@ -29,10 +29,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	lrucache "k8s.io/apimachinery/pkg/util/cache"
 	"k8s.io/apimachinery/pkg/util/sets"
-	certinformersv1alpha1 "k8s.io/client-go/informers/certificates/v1alpha1"
 	certlistersv1alpha1 "k8s.io/client-go/listers/certificates/v1alpha1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -56,71 +54,6 @@ type InformerManager struct {
 }
 
 var _ Manager = (*InformerManager)(nil)
-
-// NewInformerManager returns an initialized InformerManager.
-func NewInformerManager(bundles certinformersv1alpha1.ClusterTrustBundleInformer, cacheSize int, cacheTTL time.Duration) (*InformerManager, error) {
-	// We need to call Informer() before calling start on the shared informer
-	// factory, or the informer won't be registered to be started.
-	m := &InformerManager{
-		ctbInformer:        bundles.Informer(),
-		ctbLister:          bundles.Lister(),
-		normalizationCache: lrucache.NewLRUExpireCache(cacheSize),
-		cacheTTL:           cacheTTL,
-	}
-
-	// Have the informer bust cache entries when it sees updates that could
-	// apply to them.
-	_, err := m.ctbInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			ctb, ok := obj.(*certificatesv1alpha1.ClusterTrustBundle)
-			if !ok {
-				return
-			}
-			klog.InfoS("Dropping all cache entries for signer", "signerName", ctb.Spec.SignerName)
-			m.dropCacheFor(ctb)
-		},
-		UpdateFunc: func(old, new any) {
-			ctb, ok := new.(*certificatesv1alpha1.ClusterTrustBundle)
-			if !ok {
-				return
-			}
-			klog.InfoS("Dropping cache for ClusterTrustBundle", "signerName", ctb.Spec.SignerName)
-			m.dropCacheFor(new.(*certificatesv1alpha1.ClusterTrustBundle))
-		},
-		DeleteFunc: func(obj any) {
-			ctb, ok := obj.(*certificatesv1alpha1.ClusterTrustBundle)
-			if !ok {
-				tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-				if !ok {
-					return
-				}
-				ctb, ok = tombstone.Obj.(*certificatesv1alpha1.ClusterTrustBundle)
-				if !ok {
-					return
-				}
-			}
-			klog.InfoS("Dropping cache for ClusterTrustBundle", "signerName", ctb.Spec.SignerName)
-			m.dropCacheFor(ctb)
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("while registering event handler on informer: %w", err)
-	}
-
-	return m, nil
-}
-
-func (m *InformerManager) dropCacheFor(ctb *certificatesv1alpha1.ClusterTrustBundle) {
-	if ctb.Spec.SignerName != "" {
-		m.normalizationCache.RemoveAll(func(key any) bool {
-			return key.(cacheKeyType).signerName == ctb.Spec.SignerName
-		})
-	} else {
-		m.normalizationCache.RemoveAll(func(key any) bool {
-			return key.(cacheKeyType).ctbName == ctb.ObjectMeta.Name
-		})
-	}
-}
 
 // GetTrustAnchorsByName returns normalized and deduplicated trust anchors from
 // a single named ClusterTrustBundle.
