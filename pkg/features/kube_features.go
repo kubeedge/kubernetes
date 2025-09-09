@@ -177,6 +177,12 @@ const (
 	// Disable any functionality in kube-apiserver, kube-controller-manager and kubelet related to the `--cloud-provider` component flag.
 	DisableCloudProviders featuregate.Feature = "DisableCloudProviders"
 
+	// owner: @kubeedge
+	// alpha: v1.31.12-kubeedge2
+	//
+	// DisableCSIVolumePlugin disables the in-tree CSI volume plugin support.
+	DisableCSIVolumePlugin featuregate.Feature = "DisableCSIVolumePlugin"
+
 	// owner: @andrewsykim
 	//
 	// Disable in-tree functionality in kubelet to authenticate to cloud provider container registries for image pull credentials.
