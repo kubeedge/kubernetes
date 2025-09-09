@@ -293,6 +293,12 @@ const (
 	// The Feature Gate will be locked to true and then removed in +2 releases (1.35) if there are no bug reported
 	DisableCPUQuotaWithExclusiveCPUs featuregate.Feature = "DisableCPUQuotaWithExclusiveCPUs"
 
+	// owner: @kubeedge
+	// alpha: v1.31.12-kubeedge2
+	//
+	// DisableCSIVolumePlugin disables the in-tree CSI volume plugin support.
+	DisableCSIVolumePlugin featuregate.Feature = "DisableCSIVolumePlugin"
+
 	// owner: @HirazawaUi
 	// kep: http://kep.k8s.io/4004
 	//
@@ -1264,6 +1270,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 
 	DisableCPUQuotaWithExclusiveCPUs: {
 		{Version: version.MustParse("1.33"), Default: true, PreRelease: featuregate.Beta},
+	},
+
+	DisableCSIVolumePlugin: {
+		{Version: version.MustParse("1.31"), Default: false, PreRelease: featuregate.Alpha},
 	},
 
 	DisableNodeKubeProxyVersion: {
