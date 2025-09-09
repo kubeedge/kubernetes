@@ -218,6 +218,12 @@ const (
 	// Disable any functionality in kube-apiserver, kube-controller-manager and kubelet related to the `--cloud-provider` component flag.
 	DisableCloudProviders featuregate.Feature = "DisableCloudProviders"
 
+	// owner: @kubeedge
+	// alpha: v1.31.12-kubeedge2
+	//
+	// DisableCSIVolumePlugin disables the in-tree CSI volume plugin support.
+	DisableCSIVolumePlugin featuregate.Feature = "DisableCSIVolumePlugin"
+
 	// owner: @andrewsykim
 	// alpha: v1.23
 	// beta: v1.29
@@ -1066,6 +1072,8 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DisableAllocatorDualWrite: {Default: false, PreRelease: featuregate.Alpha}, // remove after MultiCIDRServiceAllocator is GA
 
 	DisableCloudProviders: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
+
+	DisableCSIVolumePlugin: {Default: false, PreRelease: featuregate.Alpha},
 
 	DisableKubeletCloudCredentialProviders: {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 
