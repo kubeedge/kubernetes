@@ -488,6 +488,12 @@ const (
 	// kep: https://kep.k8s.io/4205
 	KubeletPSI featuregate.Feature = "KubeletPSI"
 
+	// owner: @kubeedge
+	// alpha: v1.31.12-kubeedge2
+	//
+	// Enables the kubelet's pod resources grpc endpoint
+	KubeletPodResources featuregate.Feature = "KubeletPodResources"
+
 	// owner: @moshe010
 	//
 	// Enable POD resources API to return resources allocated by Dynamic Resource Allocation
@@ -1406,6 +1412,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
 	KubeletPodResourcesDynamicResources: {
 		{Version: version.MustParse("1.27"), Default: false, PreRelease: featuregate.Alpha},
 		{Version: version.MustParse("1.34"), Default: true, PreRelease: featuregate.Beta},
+	},
+
+	KubeletPodResources: {
+		{Version: version.MustParse("1.31"), Default: false, PreRelease: featuregate.Alpha},
 	},
 
 	KubeletPodResourcesGet: {
