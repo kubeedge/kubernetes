@@ -360,6 +360,12 @@ const (
 	// All the node components such as CRI need to be running in the same user namespace.
 	KubeletInUserNamespace featuregate.Feature = "KubeletInUserNamespace"
 
+	// owner: @kubeedge
+	// alpha: v1.31.12-kubeedge2
+	//
+	// Enables the kubelet's pod resources grpc endpoint
+	KubeletPodResources featuregate.Feature = "KubeletPodResources"
+
 	// owner: @moshe010
 	//
 	// Enable POD resources API to return resources allocated by Dynamic Resource Allocation
