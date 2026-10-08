@@ -41,7 +41,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 
-	"k8s.io/client-go/informers"
 	"k8s.io/mount-utils"
 
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
@@ -53,14 +52,12 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	coreinformersv1 "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -449,7 +446,6 @@ func NewMainKubelet(ctx context.Context,
 	}
 
 	var nodeHasSynced cache.InformerSynced
-	var nodeInformer coreinformersv1.NodeInformer
 	var nodeLister corelisters.NodeLister
 	nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	nodeLister = corelisters.NewNodeLister(nodeIndexer)
@@ -902,30 +898,8 @@ func NewMainKubelet(ctx context.Context,
 		klog.InfoS("Not starting ClusterTrustBundle informer because we are in static kubelet mode or the ClusterTrustBundleProjection featuregate is disabled")
 	}
 
-	if kubeDeps.KubeClient != nil && utilfeature.DefaultFeatureGate.Enabled(features.PodCertificateRequest) {
-		kubeInformers := informers.NewSharedInformerFactoryWithOptions(
-			kubeDeps.KubeClient,
-			0,
-			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-				options.FieldSelector = fields.OneTermEqualSelector("spec.nodeName", string(nodeName)).String()
-			}),
-		)
-		nodeInformer = kubeInformers.Core().V1().Nodes()
-		podCertificateManager := podcertificate.NewIssuingManager(
-			kubeDeps.KubeClient,
-			klet.podManager,
-			kubeInformers.Certificates().V1alpha1().PodCertificateRequests(),
-			nodeInformer,
-			nodeName,
-			clock.RealClock{},
-		)
-		klet.podCertificateManager = podCertificateManager
-		kubeInformers.Start(ctx.Done())
-		go podCertificateManager.Run(ctx)
-	} else {
-		klet.podCertificateManager = &podcertificate.NoOpManager{}
-		klog.InfoS("Not starting PodCertificateRequest manager because we are in static kubelet mode or the PodCertificateProjection feature gate is disabled")
-	}
+	klet.podCertificateManager = &podcertificate.NoOpManager{}
+	klog.InfoS("PodCertificateRequest manager is disabled")
 
 	// NewInitializedVolumePluginMgr initializes some storageErrors on the Kubelet runtimeState (in csi_plugin.go init)
 	// which affects node ready status. This function must be called before Kubelet is initialized so that the Node
